@@ -130,11 +130,11 @@ bool savePresetsJson(const String& json)
 #if ENABLE_DISPLAY
 	char groups_string[8] = "";
 	sprintf(groups_string, "%d", getGroupsCount());
-	display_write_word(COLOR_WHITE, Align::RIGHT, 3, groups_string);
+	display_write_word(COLOR_WHITE, Align::RIGHT, 2, groups_string);
 
 	char temp_string[8] = "";
     sprintf(temp_string, "%d", getPresetsCount());
-    display_write_word(COLOR_WHITE, Align::RIGHT, 4, temp_string);
+    display_write_word(COLOR_WHITE, Align::RIGHT, 3, temp_string);
 #endif
 
 	return ok;
