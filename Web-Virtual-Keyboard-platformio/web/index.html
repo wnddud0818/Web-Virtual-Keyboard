@@ -12,12 +12,13 @@
 	--muted: #a8acb3;
 	--card: #1b1c20;
 	--border: #2b2d33;
+	--field: #141519;
 
 	--accent-1: #ff7a18;
 	--accent-2: #ffa24d;
 
-	--ok: #9de19d;
-	--err: #ff8a8a;
+	--ok: #22e06a;
+	--err: #ff3b3b;
 	--warn: #f1c40f;
 
 	--radius: 14px;
@@ -39,64 +40,38 @@ body {
 	font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Arial, sans-serif;
 	display: flex;
 	justify-content: center;
-	padding: 28px 16px;
+	padding: 14px 6px;
+	min-height: 100vh;
 }
 
-h1 { margin: 0 0 14px; font-size: clamp(20px, 3.6vw, 32px); }
-h2 { margin: 18px 0 10px; font-size: 18px; color: var(--muted); font-weight: 700; letter-spacing: .3px; }
+.wrap { width: 100%; display: flex; flex-direction: column; gap: 18px; }
+
+/* Presets and raw typing split the width evenly. */
+.main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.send-card { position: sticky; top: 14px; }
+
+h1 { margin: 0; font-size: clamp(20px, 3.6vw, 32px); text-align: center; }
+h2 { margin: 0; font-size: 18px; color: var(--muted); font-weight: 700; letter-spacing: .3px; }
+h3 { margin: 0 0 4px; font-size: 20px; }
 
 .card {
-	width: min(1200px, 95vw);
 	background: var(--card);
 	border: 1px solid var(--border);
 	border-radius: var(--radius);
 	padding: var(--pad);
 }
 
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--gap); margin-bottom: 14px; }
+
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap); }
 .row + .row { margin-top: 10px; }
 
-/* top input + Send button as grid */
-.row--send {
-	display: grid;
-	grid-template-columns: 1fr;
-	gap: 0;
-	align-items: stretch;
-}
-
-/* NEW: hotkey buttons under the textarea */
-.row--hotkeys {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-	gap: var(--gap);
-}
-
-/* 3 inputs + button on one line for desktop */
-.row--form {
-	display: grid;
-	grid-template-columns:
-		minmax(260px, 2fr)
-		minmax(200px, 1.5fr)
-		minmax(220px, 1.5fr)
-		auto;
-	gap: var(--gap);
-	align-items: stretch;
-}
-
-/* No automatic ellipsis for the password cell */
-.val--clip {
-  text-overflow: clip !important;  /* override the .val ellipsis */
-  overflow: hidden;                 /* keep truncation */
-  white-space: nowrap;              /* single line */
-  min-width: 0;                     /* allow shrinking in grid */
-}
-
 /* Inputs & textarea share styling */
-input[type="text"], input[type="password"], textarea {
+input[type="text"], textarea {
 	padding: 10px 14px;
 	font-size: var(--fs-body);
 	color: var(--text);
-	background: #141519;
+	background: var(--field);
 	border: 1px solid var(--border);
 	border-radius: var(--radius-sm);
 	outline: none;
@@ -105,22 +80,58 @@ input[type="text"], input[type="password"], textarea {
 	width: 100%;
 }
 
-input[type="text"], input[type="password"] { height: 48px; }
+input[type="text"] { height: 48px; }
 
 textarea {
-	min-height: 96px;   /* 4 rows-ish */
-	resize: vertical;   /* allow vertical resize */
+	min-height: 96px;
+	resize: vertical;
 	line-height: 1.35;
 }
 
+#mValue {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+	min-height: 72px;
+}
+
 input[type="text"]:focus, input[type="text"]:hover,
-input[type="password"]:focus, input[type="password"]:hover,
 textarea:focus, textarea:hover {
 	border-color: var(--accent-1);
 	box-shadow: 0 0 8px 2px rgba(255, 122, 24, .35);
 }
 
-input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent-1); cursor: pointer; }
+/* Themed checkboxes & radios (dark field + orange accent, matching the inputs) */
+input[type="checkbox"], input[type="radio"] {
+	appearance: none; -webkit-appearance: none; margin: 0;
+	width: 20px; height: 20px; flex: none;
+	background: var(--field);
+	border: 1px solid var(--border);
+	cursor: pointer;
+	display: inline-grid; place-content: center;
+	transition: border-color .15s, box-shadow .15s, background .15s;
+}
+input[type="checkbox"] { border-radius: 6px; }
+input[type="radio"]    { border-radius: 50%; }
+input[type="checkbox"]:hover, input[type="radio"]:hover,
+input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible {
+	border-color: var(--accent-1);
+	box-shadow: 0 0 8px 2px rgba(255, 122, 24, .35);
+	outline: none;
+}
+input[type="checkbox"]:checked, input[type="radio"]:checked {
+	background: linear-gradient(180deg, var(--accent-1) 0%, var(--accent-2) 100%);
+	border-color: var(--accent-1);
+}
+input[type="checkbox"]::before, input[type="radio"]::before {
+	content: ""; transform: scale(0);
+	transition: transform .12s ease-in-out;
+	background: #101114;
+}
+input[type="checkbox"]::before {
+	width: 12px; height: 12px;
+	clip-path: polygon(14% 44%, 0 65%, 43% 100%, 100% 16%, 84% 0, 43% 68%);
+}
+input[type="radio"]::before { width: 8px; height: 8px; border-radius: 50%; }
+input[type="checkbox"]:checked::before, input[type="radio"]:checked::before { transform: scale(1); }
 .checkbox { display: inline-flex; align-items: center; gap: 8px; }
 
 button {
@@ -132,156 +143,330 @@ button {
 
 button:hover { filter: brightness(1.15); box-shadow: 0 0 14px 4px rgba(255,122,24,.6); }
 button:active{ filter: brightness(1.05); }
-button:disabled{ opacity: .65; cursor: not-allowed; }
+button:disabled{ opacity: .65; cursor: not-allowed; box-shadow: none; }
+
+.btn-sm { height: 38px; padding: 0 14px; border-radius: 10px; font-size: var(--fs-small); }
+
+/* Secondary / outline buttons (Edit, Cancel, palette keys) */
+.btn-ghost {
+	background: transparent;
+	color: var(--text);
+	border: 1px solid var(--border);
+}
+.btn-ghost:hover { border-color: var(--accent-1); box-shadow: 0 0 8px 1px rgba(255,122,24,.3); filter: none; }
+
+.btn-danger { background: transparent; color: var(--err); border: 1px solid #4a2b2b; }
+.btn-danger:hover { border-color: var(--err); box-shadow: 0 0 8px 1px rgba(255,59,59,.3); filter: none; }
+
+/* Compact square icon buttons for the preset rows. Send + Edit share one look;
+   Delete stays red-tinted to flag the destructive action. */
+.icon-btn {
+	height: 34px; width: 34px; padding: 0;
+	display: inline-flex; align-items: center; justify-content: center;
+	border-radius: 9px;
+	background: transparent; color: var(--text);
+	border: 1px solid var(--border);
+}
+.icon-btn svg { width: 17px; height: 17px; display: block; }
+.icon-btn:hover { border-color: var(--accent-1); color: var(--accent-2); box-shadow: 0 0 8px 1px rgba(255,122,24,.3); filter: none; }
+.icon-btn.danger { color: var(--err); border-color: #4a2b2b; }
+.icon-btn.danger:hover { border-color: var(--err); color: var(--err); box-shadow: 0 0 8px 1px rgba(255,59,59,.3); }
 
 .hr { height: 1px; background: var(--border); margin: 16px 0; }
 .small { font-size: var(--fs-small); color: var(--muted); }
-#msg { margin-top: 10px; font-size: var(--fs-small); color: var(--muted); min-height: 1.2em; }
-#msg.ok{ color: var(--ok); } #msg.err{ color: var(--err);} #msg.warn{ color: var(--warn); }
 
-.kv {
-	display: grid;
-	grid-template-columns: minmax(120px, 220px) 1fr;
-	gap: 16px;
-	align-items: center;
+.footer { margin-top: auto; display: flex; justify-content: center; align-items: center; gap: 8px; color: var(--muted); padding: 2px 0 4px; }
+.footer b { color: var(--text); font-weight: 700; }
+.footer-sep { opacity: .5; }
+/* ---------- Toast (global status, top-right, above the modal) ---------- */
+.toast {
+	position: fixed; top: 20px; right: 20px;
+	z-index: 100;
+	max-width: min(520px, 92vw);
+	padding: 15px 22px;
+	background: var(--card);
+	border: 2px solid var(--border);
+	border-radius: var(--radius-sm);
+	color: var(--text);
+	font-size: var(--fs-body);
+	font-weight: 600;
+	box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
+	opacity: 0;
+	transform: translateX(20px);
+	pointer-events: none;
+	transition: opacity .2s ease, transform .2s ease;
 }
-.kv .name { font-weight: 600; color: var(--text); word-break: break-word; }
-.kv .vals {
+.toast.show { opacity: 1; transform: translateX(0); }
+/* Only red and green — validation warnings use red too. */
+.toast.ok   { border-color: var(--ok); }
+.toast.err  { border-color: var(--err); }
+.toast.warn { border-color: var(--err); }
+
+/* ---------- Preset list ---------- */
+.preset {
 	display: grid;
-	grid-template-columns: 1fr 1fr max-content;
+	grid-template-columns: minmax(90px, 210px) 1fr auto;
 	gap: 12px;
 	align-items: center;
-	width: 100%;
+	padding: 5px 0;
 }
+.preset + .preset { border-top: 1px dashed var(--border); }
+.preset-name { font-weight: 600; word-break: break-word; }
+.preset-value { display: flex; align-items: center; gap: 10px; min-width: 0; }
 
 .val {
 	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+	font-size: var(--fs-small);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	min-width: 0;
 }
-.kv + .kv { border-top: 1px dashed var(--border); padding-top: 10px; margin-top: 10px; }
-
-.btn-sm { height: 38px; padding: 0 14px; border-radius: 10px; }
+.hidden-tag { font-style: italic; font-size: 13px; color: #7d828b; }
 .toggle {
 	display: inline-block;
 	text-decoration: underline;
 	cursor: pointer;
 	font-size: var(--fs-small);
 	color: var(--muted);
-	width: 4ch;
-	text-align: left;
+	flex: none;
+}
+.preset-actions { display: flex; gap: 6px; flex: none; }
+
+/* ---------- Preset groups (collapsible, compact) ---------- */
+.group { border-top: 1px dashed var(--border); margin-top: 6px; padding-top: 6px; }
+.group:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+.group-head {
+	display: flex; align-items: center; gap: 8px;
+	cursor: pointer; user-select: none;
+	font-weight: 700; padding: 3px 4px; border-radius: var(--radius-sm);
+}
+.group-head:hover { color: var(--accent-2); }
+.group-caret {
+	display: inline-block; width: 1ch; text-align: center;
+	color: var(--accent-1);
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.group-name { word-break: break-word; }
+.group-count { font-size: var(--fs-small); color: var(--muted); font-weight: 600; }
+.group-body { margin: 2px 0 0 5px; padding-left: 10px; border-left: 2px solid var(--border); }
+.group-body[hidden] { display: none; }
+.group-body .preset:first-child { margin-top: 0; }
+
+/* ---------- Modal ---------- */
+.modal-backdrop {
+	position: fixed; inset: 0;
+	background: rgba(0, 0, 0, .6);
+	display: flex; align-items: flex-start; justify-content: center;
+	padding: 28px 16px;
+	overflow-y: auto;
+	z-index: 50;
+}
+.modal-backdrop[hidden] { display: none; }
+.modal {
+	width: min(880px, 100%);
+	background: var(--card);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: var(--pad);
 }
 
-/* ---------- Responsive fixes ---------- */
+/* Two-column modal body keeps the dialog wide-and-short (roughly 16:9). */
+.modal-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.modal-col { min-width: 0; }
+.field { display: block; margin-top: 14px; }
+.field-label { display: block; font-size: var(--fs-small); color: var(--muted); margin-bottom: 6px; font-weight: 600; }
 
-/* Tablet & small laptop: stack preset rows and let buttons wrap */
-@media (max-width: 900px) {
-  .row--form { grid-template-columns: 1fr; }
-  .kv { grid-template-columns: 1fr; align-items: start; }
-  .kv .name { min-width: 0; }
-  .kv .vals { grid-template-columns: 1fr; row-gap: 8px; }
-  .kv .vals > div:last-child { flex-wrap: wrap; gap: 10px; }
+/* Inline validation: red field text + red border on the offending input. */
+.field-error { color: var(--err); font-weight: 600; }
+input.invalid, textarea.invalid {
+	border-color: var(--err) !important;
+	box-shadow: 0 0 8px 2px rgba(255, 59, 59, .4) !important;
 }
 
-/* Phone width: put the Send button under the textarea */
-@media (max-width: 480px) {
-  .row--send { grid-template-columns: 1fr; }
-  .row--send #send { width: 100%; }
-  .row--hotkeys { grid-template-columns: 1fr; } /* stack hotkeys */
+.palette { margin-top: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; }
+.palette-group + .palette-group { margin-top: 10px; }
+.palette-group .glabel { font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); margin-bottom: 6px; }
+.palette-keys { display: flex; flex-wrap: wrap; gap: 6px; }
+/* All special keys share one look — they all behave the same (held until the
+   next normal character), so there is no modifier-vs-key distinction anymore. */
+.key {
+	height: 32px; padding: 0 10px; border-radius: 8px;
+	font-size: 12px; font-weight: 700;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	background: var(--field); color: var(--accent-2); border: 1px solid #4a3a2b;
+}
+.key:hover { border-color: var(--accent-1); box-shadow: 0 0 6px 1px rgba(255,122,24,.3); filter: none; }
+
+.radios { display: flex; flex-wrap: wrap; gap: 18px; }
+.radios label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+/* Stacked variant for the modal side column. */
+.radios--stack { flex-direction: column; gap: 10px; }
+
+/* Title + actions share the top row of the modal. */
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--gap); margin-bottom: 8px; }
+.modal-head h3 { margin: 0; }
+.modal-actions { display: flex; gap: 10px; flex: none; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 860px) {
+	/* Stack the two columns; bring raw typing back to the top like before. */
+	.main { grid-template-columns: 1fr; }
+	.send-card { position: static; order: -1; }
+}
+
+@media (max-width: 700px) {
+	.preset { grid-template-columns: 1fr; align-items: start; }
+	.radios { flex-direction: column; gap: 10px; }
+	.modal-grid { grid-template-columns: 1fr; }
 }
 </style>
 </head>
 
 <body>
-<div class="card">
+<div class="wrap">
+
 	<h1>Web Virtual Keyboard</h1>
 
-	<!-- Wide multi-line box + Send -->
-	<div class="row row--send">
-		<textarea id="text" placeholder="Enter text here (Shift+Enter for newline, Enter to send)" autocomplete="off" autofocus></textarea>
+	<div class="main">
+
+		<!-- ===== Presets card (left, roomy) ===== -->
+		<div class="card">
+			<div class="card-head">
+				<h2>Presets</h2>
+				<button id="newPreset" class="btn-sm" type="button">+ New preset</button>
+			</div>
+
+			<div id="plist"></div>
+		</div>
+
+		<!-- ===== Raw typing card (right) ===== -->
+		<div class="card send-card">
+			<h2 style="margin-bottom:12px">Type text</h2>
+
+			<div class="row">
+				<textarea id="text" placeholder="Enter text here (Shift+Enter for newline, Enter to send)" autocomplete="off" autofocus></textarea>
+			</div>
+
+			<div class="row">
+				<button id="send" class="btn-sm" type="button">Send</button>
+				<label class="checkbox" for="appendNL">
+					<input type="checkbox" id="appendNL" checked>
+					<span>Add CRLF</span>
+				</label>
+			</div>
+		</div>
+
 	</div>
 
-	<!-- NEW: Hotkey buttons directly below textbox -->
-	<div class="row row--hotkeys" aria-label="Hotkey actions">
-		<button id="send" type="button">Send</button>
-		<button id="btnCtrlC" type="button" title="Send Ctrl+C">Ctrl-C</button>
-		<button id="btnCtrlX" type="button" title="Send Ctrl+X">Ctrl-X</button>
-		<button id="btnCtrlAltDel" type="button" title="Send Ctrl+Alt+Del">Ctrl-Alt-Del</button>
-	</div>
-
-	<div class="row">
-		<label class="checkbox" for="appendNL">
-			<input type="checkbox" id="appendNL" checked>
-			<span>Auto press Enter</span>
-		</label>
-	</div>
-
-	<div class="hr"></div>
-
-	<h2>Manage Presets</h2>
-	<div class="row row--form">
-		<input id="pname" type="text" placeholder="Preset name" autocomplete="off">
-		<input id="puser" type="text" placeholder="Username" autocomplete="off">
-		<input id="ppass" type="password" placeholder="Password" autocomplete="new-password">
-		<button id="addPreset" type="button">Add / Update</button>
-	</div>
-
-	<div class="row small">
-		Presets are saved persistently in flash memory (username + password).
-	</div>
-
-	<div class="hr"></div>
-
-	<!-- Presets list -->
-	<div id="plist"></div>
-
-	<div id="msg" aria-live="polite"></div>
+	<footer class="footer small">
+		<span>FW&nbsp;<b id="fwVer">-</b></span>
+		<span class="footer-sep">·</span>
+		<span>Storage&nbsp;<b id="storVer">-</b></span>
+	</footer>
 </div>
 
+<!-- ===== Create / Edit modal ===== -->
+<div id="modal" class="modal-backdrop" hidden>
+	<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+		<div class="modal-head">
+			<h3 id="modalTitle">New preset</h3>
+			<div class="modal-actions">
+				<button id="mCancel" class="btn-ghost btn-sm" type="button">Cancel</button>
+				<button id="mSave" class="btn-sm" type="button">Save</button>
+			</div>
+		</div>
+
+		<div class="modal-grid">
+			<div class="modal-col">
+				<label class="field">
+					<span class="field-label">Name <span class="field-error" id="nameErr"></span></span>
+					<input id="mName" type="text" placeholder="Preset name" autocomplete="off">
+				</label>
+
+				<label class="field">
+					<span class="field-label">Value <span class="field-error" id="valueErr"></span></span>
+					<textarea id="mValue" placeholder="Type text and insert special keys below" autocomplete="off"></textarea>
+				</label>
+
+				<div class="palette" id="palette" aria-label="Special key builder"></div>
+			</div>
+
+			<div class="modal-col">
+				<label class="field">
+					<span class="field-label">Group</span>
+					<input id="mGroup" type="text" placeholder="Group name (optional)" autocomplete="off">
+				</label>
+
+				<div class="field">
+					<span class="field-label">Visibility</span>
+					<div class="radios radios--stack">
+						<label><input type="radio" name="vis" value="plain"><span>Plaintext</span></label>
+						<label><input type="radio" name="vis" value="mask" checked><span>Masked (••••)</span></label>
+						<label><input type="radio" name="vis" value="hidden"><span>Hidden</span></label>
+					</div>
+				</div>
+
+				<div class="small" id="mNote" style="margin-top:10px"></div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
 <script>
-const text   	= document.getElementById("text");
-const msg    	= document.getElementById("msg");
-const btn    	= document.getElementById("send");
-const cbNL   	= document.getElementById("appendNL");
-const pname  	= document.getElementById("pname");
-const puser  	= document.getElementById("puser");
-const ppass  	= document.getElementById("ppass");
-const addBtn 	= document.getElementById("addPreset");
-const plist  	= document.getElementById("plist");
+const text    = document.getElementById("text");
+const toast   = document.getElementById("toast");
+const btn     = document.getElementById("send");
+const cbNL    = document.getElementById("appendNL");
+const plist   = document.getElementById("plist");
+const newBtn  = document.getElementById("newPreset");
 
-/* NEW: hotkey buttons */
-const btnCtrlC      = document.getElementById("btnCtrlC");
-const btnCtrlX      = document.getElementById("btnCtrlX");
-const btnCtrlAltDel = document.getElementById("btnCtrlAltDel");
+const modal      = document.getElementById("modal");
+const modalTitle = document.getElementById("modalTitle");
+const mName      = document.getElementById("mName");
+const mGroup     = document.getElementById("mGroup");
+const mValue     = document.getElementById("mValue");
+const palette    = document.getElementById("palette");
+const mNote      = document.getElementById("mNote");
+const mCancel    = document.getElementById("mCancel");
+const mSave      = document.getElementById("mSave");
+const nameErr    = document.getElementById("nameErr");
+const valueErr   = document.getElementById("valueErr");
 
-/* NEW: control sequences (edit as needed for your backend) */
-const CTRL_C = "\u0003";   // ETX
-const CTRL_X = "\u0018";   // CAN
+/* Token palette — names must match the firmware key table. */
+const PALETTE = [
+	["Modifiers",  ["CTRL", "ALT", "SHIFT", "WIN"]],
+	["Keys",       ["ENTER", "TAB", "SPACE", "BKSP", "DEL", "ESC", "INS"]],
+	["Navigation", ["UP", "DOWN", "LEFT", "RIGHT", "HOME", "END", "PGUP", "PGDN"]],
+	["System",     ["CAPS", "SCRLK", "NUMLK", "PRTSC", "PAUSE", "MENU"]],
+	["Function",   ["F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12"]],
+];
 
-/* For Ctrl+Alt+Del, different backends use different signals.
-   Replace CAD_SEQUENCE with what your server expects, e.g.:
-   - a literal token like "{CTRL}{ALT}{DEL}"
-   - a dedicated endpoint (then change sendRaw() URL)
-   - a sentinel like "\u0000CAD" that your server maps
-   - or ASCII DEL alone "\u007F" if that’s your device’s trigger
-*/
-const CAD_SEQUENCE = "{CTRL}{ALT}{DEL}";
+let editing = null;       // { name, group } of the preset being edited, or null when creating
+let allPresets = [];      // last-loaded preset list, used for client-side name-clash checks
 
+let toastTimer = null;
 function setMsg(t, cls) {
-	msg.textContent = t;
-	msg.className   = cls || "";
+	if (!t) { toast.classList.remove("show"); return; }
+
+	toast.textContent = t;
+	toast.className = "toast show" + (cls ? " " + cls : "");
+
+	if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+	// In-progress messages (no class, e.g. "Sending …") stay until the result
+	// replaces them; ok / err / warn results auto-dismiss after a few seconds.
+	if (cls) { toastTimer = setTimeout(() => toast.classList.remove("show"), 3200); }
 }
 
-/* Existing text sender (respects Auto press Enter) */
+/* ---------- Send text (main textarea) ---------- */
 async function sendText(value) {
 	const newlineFlag = cbNL.checked ? "1" : "0";
-	const body        = "text=" + encodeURIComponent(value) + "&newline=" + newlineFlag;
+	const body = "text=" + encodeURIComponent(value) + "&newline=" + newlineFlag;
 
 	setMsg("Sending ...", "");
 	btn.disabled = true;
-
 	try {
 		const r = await fetch("/type", {
 			method: "POST",
@@ -290,9 +475,8 @@ async function sendText(value) {
 		});
 		if (!r.ok) { throw new Error(); }
 		setMsg("Text sent", "ok");
-
 		text.value = "";
-    	text.focus();
+		text.focus();
 	} catch (e) {
 		setMsg("Sending text failed", "err");
 	} finally {
@@ -300,156 +484,210 @@ async function sendText(value) {
 	}
 }
 
-/* NEW: raw sender for hotkeys (IGNORES Auto press Enter) */
-async function sendRaw(chars) {
-	const body = "text=" + encodeURIComponent(chars) + "&newline=0";
+btn.addEventListener("click", () => sendText(text.value || ""));
 
+// On touch-primary devices (phones/tablets) the on-screen keyboard's return key
+// should insert a newline, not send. Only bind Enter -> Send when the primary
+// pointer is fine (mouse/trackpad + physical keyboard).
+const isTouchDevice = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+
+if (isTouchDevice) {
+	text.placeholder = "Enter text here";
+} else {
+	text.addEventListener("keydown", function(e) {
+		if (e.key === "Enter" && !e.shiftKey) {
+			e.preventDefault();
+			btn.click();
+		}
+	});
+}
+
+/* ---------- Send a stored preset by name ---------- */
+async function sendPreset(name, group) {
 	setMsg("Sending ...", "");
-	// Temporarily disable only the hotkey buttons to prevent double taps
-	const hotkeyButtons = [btnCtrlC, btnCtrlX, btnCtrlAltDel];
-	hotkeyButtons.forEach(b => b.disabled = true);
-
 	try {
-		const r = await fetch("/type", {
+		const r = await fetch("/send", {
 			method: "POST",
 			headers: { "Content-Type": "application/x-www-form-urlencoded" },
-			body
+			body: "name=" + encodeURIComponent(name) + "&group=" + encodeURIComponent(group || "")
 		});
 		if (!r.ok) { throw new Error(); }
-		setMsg("Hotkey sent", "ok");
+		setMsg('Preset "' + name + '" sent', "ok");
 	} catch (e) {
-		setMsg("Sending hotkey failed", "err");
-	} finally {
-		hotkeyButtons.forEach(b => b.disabled = false);
+		setMsg("Sending preset failed", "err");
 	}
 }
 
-// Send on click (preserve spaces and CR/LF exactly)
-btn.addEventListener("click", function() {
-	const value = text.value;
-	if (value === undefined || value === null) {
-		setMsg("Text field missing", "err");
-		return;
-	}
-	sendText(value);
-});
-
-// NEW: Enter to send, Shift+Enter for newline
-text.addEventListener("keydown", function(e) {
-	if (e.key === "Enter" && !e.shiftKey) {
-		e.preventDefault();     // don't insert newline
-		btn.click();            // trigger send
-	}
-});
-
-/* NEW: wire hotkey buttons */
-btnCtrlC.addEventListener("click", () => sendRaw(CTRL_C));
-btnCtrlX.addEventListener("click", () => sendRaw(CTRL_X));
-btnCtrlAltDel.addEventListener("click", () => sendRaw(CAD_SEQUENCE));
-
-function maskAndShorten(s) {
+/* ---------- Preset list rendering ---------- */
+function shorten(s, n) {
+	n = n || 40;
 	if (!s) { return ""; }
-	return "•".repeat(Math.min(s.length, 24)) + (s.length > 24 ? "…" : "");
+	return s.length > n ? s.slice(0, n) + "…" : s;
 }
 
-function shorten(s) {
-  if (!s) { return ""; }
-  return s.slice(0, 24) + (s.length > 24 ? "…" : "");
+// Groups that are currently rolled out. Persists across re-renders so the list
+// keeps its open/closed state after a save/send/delete refresh.
+const expandedGroups = new Set();
+
+/* Inline SVG icons (fill: currentColor, so they follow the button theme). */
+const ICONS = {
+	send:  '<path d="M2.5 21 23 12 2.5 3v6.7L17 12 2.5 14.3V21z"/>',
+	edit:  '<path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm17.71-9.79a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>',
+	trash: '<path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>',
+};
+
+function iconButton(icon, label, extraClass, onClick) {
+	const b = document.createElement("button");
+	b.type = "button";
+	b.className = "icon-btn" + (extraClass ? " " + extraClass : "");
+	b.title = label;
+	b.setAttribute("aria-label", label);
+	b.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' + ICONS[icon] + '</svg>';
+	b.addEventListener("click", onClick);
+	return b;
 }
 
-function renderList(presets) {
-	plist.innerHTML = "";
+// Build one preset row element (name | value | actions) from a preset object
+// { name, group, vis, value? }.
+function createPresetRow(p) {
+	const vis = p.vis || "mask";
 
-	const names = Object.keys(presets).sort(function(a, b) { return a.localeCompare(b); });
+	const row = document.createElement("div");
+	row.className = "preset";
 
-	if (names.length === 0) {
-		plist.innerHTML = '<div class="small">No presets yet</div>';
-		return;
-	}
+	const nameEl = document.createElement("div");
+	nameEl.className = "preset-name";
+	nameEl.textContent = p.name || "";
 
-	for (const n of names) {
-		let entry = presets[n];
+	const valWrap = document.createElement("div");
+	valWrap.className = "preset-value";
 
-		const row = document.createElement("div");
-		row.className = "kv";
-
-		const nameEl = document.createElement("div");
-		nameEl.className = "name";
-		nameEl.textContent = n;
-
-		const vals = document.createElement("div");
-		vals.className = "vals";
-
-		const userEl = document.createElement("div");
-		userEl.className = "val small";
-		userEl.textContent = shorten(entry.user || "");
-
-		const passEl = document.createElement("div");
-		passEl.className = "val small val--clip";
+	if (vis === "hidden") {
+		const tag = document.createElement("span");
+		tag.className = "hidden-tag";
+		tag.textContent = "hidden";
+		valWrap.appendChild(tag);
+	} else if (vis === "mask") {
+		const valEl = document.createElement("span");
+		valEl.className = "val";
+		valEl.textContent = "••••••••";
 		let shown = false;
-		const passText = document.createElement("span");
-		passText.textContent = maskAndShorten(entry.pass || "");
 		const toggle = document.createElement("span");
 		toggle.className = "toggle";
 		toggle.textContent = "show";
 		toggle.addEventListener("click", function() {
 			shown = !shown;
-			passText.textContent = shown ? shorten(entry.pass || "") : maskAndShorten(entry.pass || "");
+			valEl.textContent = shown ? shorten(p.value || "") : "••••••••";
+			valEl.title = shown ? (p.value || "") : "";
 			toggle.textContent = shown ? "hide" : "show";
 		});
-		passEl.appendChild(passText);
-		passEl.appendChild(document.createTextNode(" "));
-		passEl.appendChild(toggle);
+		valWrap.appendChild(valEl);
+		valWrap.appendChild(toggle);
+	} else { /* plain */
+		const valEl = document.createElement("span");
+		valEl.className = "val";
+		valEl.textContent = shorten(p.value || "");
+		valEl.title = p.value || "";
+		valWrap.appendChild(valEl);
+	}
 
-		const actions = document.createElement("div");
-		actions.style.display = "flex";
-		actions.style.gap = "10px";
+	const actions = document.createElement("div");
+	actions.className = "preset-actions";
 
-		const sendUserBtn = document.createElement("button");
-		sendUserBtn.className = "btn-sm";
-		sendUserBtn.textContent = "Send User";
-		sendUserBtn.addEventListener("click", function() {
-			const v = entry.user || "";
-			text.value = v;
-			sendText(v);
-		});
+	// Send + Edit share the same look; Delete is red to flag the destructive action.
+	const sendB = iconButton("send",  "Send",   "",       () => sendPreset(p.name, p.group));
+	const editB = iconButton("edit",  "Edit",   "",       () => openModal(p));
+	const delB  = iconButton("trash", "Delete", "danger", () => deletePreset(p.name, p.group));
 
-		const sendPassBtn = document.createElement("button");
-		sendPassBtn.className = "btn-sm";
-		sendPassBtn.textContent = "Send Pass";
-		sendPassBtn.addEventListener("click", function() {
-			const v = entry.pass || "";
-			text.value = v;
-			sendText(v);
-		});
+	actions.appendChild(sendB);
+	actions.appendChild(editB);
+	actions.appendChild(delB);
 
-		const delBtn = document.createElement("button");
-		delBtn.className = "btn-sm";
-		delBtn.textContent = "Delete";
-		delBtn.addEventListener("click", async function() {
-			if (!confirm('Delete preset "' + n + '"?')) { return; }
-			try {
-				const r = await fetch("/presets?name=" + encodeURIComponent(n), { method: "DELETE" });
-				if (!r.ok) { throw new Error(); }
-				await loadPresets();
-				setMsg("Delete successful", "ok");
-			} catch (e) {
-				setMsg("Delete failed", "err");
-			}
-		});
+	row.appendChild(nameEl);
+	row.appendChild(valWrap);
+	row.appendChild(actions);
+	return row;
+}
 
-		actions.appendChild(sendUserBtn);
-		actions.appendChild(sendPassBtn);
-		actions.appendChild(delBtn);
+// Build one collapsible group: a clickable header (> rolled in / v rolled out)
+// followed by its member rows, hidden unless the group is expanded.
+function createGroup(groupName, members) {
+	const wrap = document.createElement("div");
+	wrap.className = "group";
 
-		vals.appendChild(userEl);
-		vals.appendChild(passEl);
-		vals.appendChild(actions);
+	const head = document.createElement("div");
+	head.className = "group-head";
 
-		row.appendChild(nameEl);
-		row.appendChild(vals);
+	const caret = document.createElement("span");
+	caret.className = "group-caret";
 
-		plist.appendChild(row);
+	const label = document.createElement("span");
+	label.className = "group-name";
+	label.textContent = groupName;
+
+	const count = document.createElement("span");
+	count.className = "group-count";
+	count.textContent = members.length;
+
+	head.appendChild(caret);
+	head.appendChild(label);
+	head.appendChild(count);
+
+	const body = document.createElement("div");
+	body.className = "group-body";
+	for (const p of members) {
+		body.appendChild(createPresetRow(p));
+	}
+
+	function apply(expanded) {
+		body.hidden   = !expanded;
+		caret.textContent = expanded ? "v" : ">";
+	}
+	apply(expandedGroups.has(groupName));
+
+	head.addEventListener("click", () => {
+		const expanded = body.hidden; // about to flip
+		if (expanded) { expandedGroups.add(groupName); }
+		else          { expandedGroups.delete(groupName); }
+		apply(expanded);
+	});
+
+	wrap.appendChild(head);
+	wrap.appendChild(body);
+	return wrap;
+}
+
+function renderList(presets) {
+	plist.innerHTML = "";
+
+	if (!Array.isArray(presets) || presets.length === 0) {
+		plist.innerHTML = '<div class="small">No presets yet</div>';
+		return;
+	}
+
+	const items = presets.slice().sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+	// Split into ungrouped presets and named groups.
+	const ungrouped = [];
+	const groups    = new Map(); // groupName -> [preset objects]
+	for (const p of items) {
+		const g = (p.group || "").trim();
+		if (g) {
+			if (!groups.has(g)) { groups.set(g, []); }
+			groups.get(g).push(p);
+		} else {
+			ungrouped.push(p);
+		}
+	}
+
+	// Ungrouped presets first, then groups sorted by name (rolled in by default).
+	for (const p of ungrouped) {
+		plist.appendChild(createPresetRow(p));
+	}
+
+	const groupNames = Array.from(groups.keys()).sort((a, b) => a.localeCompare(b));
+	for (const g of groupNames) {
+		plist.appendChild(createGroup(g, groups.get(g)));
 	}
 }
 
@@ -458,52 +696,220 @@ async function loadPresets() {
 		const r = await fetch("/presets");
 		if (!r.ok) { throw new Error(); }
 		const data = await r.json();
-		renderList(data);
+		allPresets = Array.isArray(data) ? data : [];
+		renderList(allPresets);
 	} catch (e) {
 		setMsg("Failed to load presets", "err");
 	}
 }
 
-addBtn.addEventListener("click", async function() {
-	const n = pname.value.trim();
-	const u = puser.value;
-	const p = ppass.value;
+async function deletePreset(name, group) {
+	if (!confirm('Delete preset "' + name + '"?')) { return; }
+	try {
+		const r = await fetch("/presets?name=" + encodeURIComponent(name) + "&group=" + encodeURIComponent(group || ""), { method: "DELETE" });
+		if (!r.ok) { throw new Error(); }
+		await loadPresets();
+		setMsg("Delete successful", "ok");
+	} catch (e) {
+		setMsg("Delete failed", "err");
+	}
+}
 
-	if (!n) {
-		setMsg("Name is required", "warn");
+/* ---------- Value builder ---------- */
+function buildPalette() {
+	palette.innerHTML = "";
+	for (const [label, keys] of PALETTE) {
+		const group = document.createElement("div");
+		group.className = "palette-group";
+
+		const glabel = document.createElement("div");
+		glabel.className = "glabel";
+		glabel.textContent = label;
+		group.appendChild(glabel);
+
+		const keyWrap = document.createElement("div");
+		keyWrap.className = "palette-keys";
+		for (const k of keys) {
+			const b = document.createElement("button");
+			b.type = "button";
+			b.className = "key";
+			b.textContent = k;
+			b.addEventListener("click", () => insertToken("<" + k + ">"));
+			keyWrap.appendChild(b);
+		}
+		group.appendChild(keyWrap);
+		palette.appendChild(group);
+	}
+}
+
+function insertToken(tok) {
+	const el = mValue;
+	const s = (el.selectionStart != null) ? el.selectionStart : el.value.length;
+	const e = (el.selectionEnd   != null) ? el.selectionEnd   : el.value.length;
+	el.value = el.value.slice(0, s) + tok + el.value.slice(e);
+	const pos = s + tok.length;
+	el.focus();
+	el.setSelectionRange(pos, pos);
+}
+
+/* ---------- Inline field validation ---------- */
+function setFieldError(inputEl, errEl, message) {
+	if (message) {
+		inputEl.classList.add("invalid");
+		errEl.textContent = " - " + message;
+	} else {
+		inputEl.classList.remove("invalid");
+		errEl.textContent = "";
+	}
+}
+
+function clearFieldErrors() {
+	setFieldError(mName, nameErr, "");
+	setFieldError(mValue, valueErr, "");
+}
+
+// True if another preset already uses (name, group). The preset currently being
+// edited keeps its own identity, so that is never treated as a clash.
+function nameExistsInGroup(name, group) {
+	const nn = name.trim(), gg = (group || "").trim();
+	if (editing && editing.name === nn && (editing.group || "") === gg) { return false; }
+	return allPresets.some(p => (p.name || "").trim() === nn && (p.group || "").trim() === gg);
+}
+
+/* ---------- Modal ---------- */
+function openModal(p) {
+	editing = p ? { name: p.name || "", group: p.group || "", vis: p.vis || "mask" } : null;
+
+	clearFieldErrors();
+
+	// reset visibility to default (plain) then override for edit
+	document.querySelector('input[name="vis"][value="plain"]').checked = true;
+
+	mGroup.value = p ? (p.group || "") : "";
+
+	if (editing) {
+		modalTitle.textContent = "Edit preset";
+		mName.value = p.name || "";
+		const vis = p.vis || "mask";
+		const radio = document.querySelector('input[name="vis"][value="' + vis + '"]');
+		if (radio) { radio.checked = true; }
+
+		if (vis === "hidden") {
+			mValue.value = "";
+			mNote.textContent = "This preset is hidden — its value is not sent to the browser. Leave the value blank to keep it, or type a new value to replace it.";
+		} else {
+			mValue.value = p.value || "";
+			mNote.textContent = "";
+		}
+	} else {
+		modalTitle.textContent = "New preset";
+		mName.value = "";
+		mValue.value = "";
+		mNote.textContent = "";
+	}
+
+	modal.hidden = false;
+	(editing ? mValue : mName).focus();
+}
+
+function closeModal() {
+	modal.hidden = true;
+	editing = null;
+	clearFieldErrors();
+}
+
+async function saveModal() {
+	const name = mName.value.trim();
+	const value = mValue.value;
+	const vis = document.querySelector('input[name="vis"]:checked').value;
+	const group = mGroup.value.trim();
+
+	clearFieldErrors();
+
+	let bad = false;
+	if (!name) {
+		setFieldError(mName, nameErr, "required");
+		bad = true;
+	} else if (nameExistsInGroup(name, group)) {
+		setFieldError(mName, nameErr, "already exists in this group");
+		bad = true;
+	}
+
+	// Value is required on create, and on edit too — except for a hidden preset,
+	// whose value is never loaded into the field, so a blank there means "keep".
+	const valueOptional = editing && editing.vis === "hidden";
+	if (!valueOptional && value.length === 0) {
+		setFieldError(mValue, valueErr, "required");
+		bad = true;
+	}
+
+	if (bad) {
+		setMsg("Please fix the highlighted fields", "warn");
 		return;
 	}
 
-	addBtn.disabled = true;
+	const sendValueField = editing ? (value.length > 0) : true;
 
+	let body = "name=" + encodeURIComponent(name)
+		+ "&vis=" + encodeURIComponent(vis)
+		+ "&group=" + encodeURIComponent(group);
+	// On edit, send the original identity so the firmware updates in place
+	// (and carries the existing value over for hidden presets).
+	if (editing) {
+		body += "&oldName=" + encodeURIComponent(editing.name)
+		     +  "&oldGroup=" + encodeURIComponent(editing.group);
+	}
+	if (sendValueField) { body += "&value=" + encodeURIComponent(value); }
+
+	mSave.disabled = true;
 	try {
-		const body =
-			"name=" + encodeURIComponent(n) +
-			"&user=" + encodeURIComponent(u) +
-			"&pass=" + encodeURIComponent(p);
-
 		const r = await fetch("/presets", {
 			method: "POST",
 			headers: { "Content-Type": "application/x-www-form-urlencoded" },
 			body
 		});
-
-		if (!r.ok) { throw new Error(); }
-
-		pname.value = "";
-		puser.value = "";
-		ppass.value = "";
-
+		if (!r.ok) {
+			const t = await r.text();
+			// A server-side name clash also lights up the Name field.
+			if (/already exists/i.test(t)) { setFieldError(mName, nameErr, "already exists in this group"); }
+			throw new Error(t || "save failed");
+		}
+		closeModal();
 		await loadPresets();
 		setMsg("Saving successful", "ok");
 	} catch (e) {
-		setMsg("Saving failed", "err");
+		setMsg("Saving failed" + (e && e.message ? " (" + e.message + ")" : ""), "err");
 	} finally {
-		addBtn.disabled = false;
+		mSave.disabled = false;
 	}
-});
+}
 
+/* ---------- Footer: firmware / storage versions ---------- */
+async function loadInfo() {
+	try {
+		const r = await fetch("/info");
+		if (!r.ok) { throw new Error(); }
+		const j = await r.json();
+		document.getElementById("fwVer").textContent   = j.fw || "?";
+		document.getElementById("storVer").textContent = j.storage || "?";
+	} catch (e) { /* leave the placeholders */ }
+}
+
+newBtn.addEventListener("click", () => openModal(null));
+mCancel.addEventListener("click", closeModal);
+mSave.addEventListener("click", saveModal);
+
+// Clear a field's error as soon as the user starts correcting it. Editing the
+// group can resolve a name clash, so that also clears the Name error.
+mName.addEventListener("input",  () => setFieldError(mName, nameErr, ""));
+mValue.addEventListener("input", () => setFieldError(mValue, valueErr, ""));
+mGroup.addEventListener("input", () => setFieldError(mName, nameErr, ""));
+modal.addEventListener("click", (e) => { if (e.target === modal) { closeModal(); } });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !modal.hidden) { closeModal(); } });
+
+buildPalette();
 loadPresets();
+loadInfo();
 </script>
 </body>
 </html>

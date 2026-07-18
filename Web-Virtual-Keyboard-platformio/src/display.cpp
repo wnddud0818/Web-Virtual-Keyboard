@@ -59,20 +59,24 @@ void display_init()
     tft.fillScreen(COLOR_BACKGROUND);
     tft.setTextSize(1); 
     
-    display_write_word(COLOR_THEME, Align::LEFT, 0, "  Web Virtual Keyboard");
-    display_write_word(COLOR_THEME, Align::LEFT, 1, "-------------------------");
-    display_write_word(COLOR_THEME, Align::LEFT, 2, "SSID");
-    display_write_word(COLOR_THEME, Align::LEFT, 3, "User");
-    display_write_word(COLOR_THEME, Align::LEFT, 4, "Presets");
+    display_write_word(COLOR_THEME, Align::LEFT, 0, "FW version");
+    display_write_word(COLOR_THEME, Align::LEFT, 1, "Storage version");
+    display_write_word(COLOR_THEME, Align::LEFT, 2, "Groups");
+    display_write_word(COLOR_THEME, Align::LEFT, 3, "Presets");
+    display_write_word(COLOR_THEME, Align::LEFT, 4, "SSID");
     display_write_word(COLOR_THEME, Align::LEFT, 5, "Wi-Fi");
 
-    display_write_word(COLOR_WHITE, Align::RIGHT, 2, WIFI_SSID);
-    display_write_word(COLOR_WHITE, Align::RIGHT, 3, MASTER_USER);
+    display_write_word(COLOR_WHITE, Align::RIGHT, 0, FW_VERSION);
+    display_write_word(COLOR_WHITE, Align::RIGHT, 1, STORAGE_VERSION);
+    
+    char groups_string[8] = "";
+    sprintf(groups_string, "%d", getGroupsCount());
+    display_write_word(COLOR_WHITE, Align::RIGHT, 2, groups_string);
 
-        
     char temp_string[8] = "";
     sprintf(temp_string, "%d", getPresetsCount());
-    display_write_word(COLOR_WHITE, Align::RIGHT, 4, temp_string);
+    display_write_word(COLOR_WHITE, Align::RIGHT, 3, temp_string);
 
+    display_write_word(COLOR_WHITE, Align::RIGHT, 4, WIFI_SSID);
     display_write_word(COLOR_ERROR, Align::RIGHT, 5, "Disconnected");  
 }

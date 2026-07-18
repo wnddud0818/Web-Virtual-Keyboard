@@ -50,6 +50,9 @@ void setup()
 	LogSerial.print("[USB] HID Keyboard ready\r\n");
 	delay(200);
 
+	// Check storage version and wipe if incompatible; ensures presets key exists
+	storageInit();
+
 #if ENABLE_DISPLAY
 	display_init();
 
@@ -65,21 +68,14 @@ void setup()
 	(void)connectWiFi();
 #endif
 
-	// Initialize NVS key if absent
-	prefs.begin(PREFS_NS, false);
-	if (!prefs.isKey(PRESETS_K))
-	{
-		prefs.putString(PRESETS_K, "{}");
-		LogSerial.println("[NVS] Initialized empty presets");
-	}
-	prefs.end();
-
 	// HTTP routes
 	server.on("/", HTTP_GET, handleRoot);
 	server.on("/type", HTTP_POST, handleType);
+	server.on("/info", HTTP_GET, handleGetInfo);
 	server.on("/presets", HTTP_GET, handleGetPresets);
 	server.on("/presets", HTTP_POST, handlePostPreset);
 	server.on("/presets", HTTP_DELETE, handleDeletePreset);
+	server.on("/send", HTTP_POST, handleSendPreset);
 
 	server.on("/favicon.ico", HTTP_GET, []()
 	{

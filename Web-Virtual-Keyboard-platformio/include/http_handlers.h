@@ -5,8 +5,10 @@
 
 void handleRoot();
 void handleType();
+void handleGetInfo();
 void handleGetPresets();
 void handlePostPreset();
 void handleDeletePreset();
+void handleSendPreset();
 
 #endif
