@@ -64,5 +64,7 @@ Supported tokens:
 
 <img width="1913" height="901" alt="Snímka obrazovky 2026-07-18 193737" src="https://github.com/user-attachments/assets/b00a74c1-281e-4d7b-8bfa-7963000330d7" />
 <img width="1912" height="905" alt="Snímka obrazovky 2026-07-18 193820" src="https://github.com/user-attachments/assets/b4d9b5ee-2c45-49b2-99a7-318fe79e4955" />
-<img width="2576" height="1932" alt="20260718_193949" src="https://github.com/user-attachments/assets/aee275b4-d7bc-4bae-bc3a-fe83da0d830e" />
+<img width="2576" height="1932" alt="20260719_023159" src="https://github.com/user-attachments/assets/98dcf398-3484-4ea2-9967-dc914521dc36" />
+
+
 
