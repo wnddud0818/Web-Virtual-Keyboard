@@ -45,7 +45,8 @@ const context = vm.createContext({
   document: {
     body: { appendChild() {} },
     getElementById: id => element(id),
-    createElement: () => element("created")
+    createElement: () => element("created"),
+    querySelectorAll: () => []
   }
 });
 
@@ -94,9 +95,9 @@ assert.equal(decoded.chunks, 2);
 assert.deepEqual(Array.from(decoded.bytes), Array.from(original));
 
 assert.throws(() => parseWvk(envelope.replace(records[0], records[0].replace("|", "|00000000|"))));
-assert.throws(() => parseWvk(envelope.replace(`SIZE=${original.length}`, "SIZE=999")), /size mismatch/i);
-assert.throws(() => parseWvk(envelope.replace("C|000002", "C|000003")), /order error/i);
-assert.throws(() => parseWvk(envelope.replace(/SHA256=[0-9a-f]+/, `SHA256=${"0".repeat(64)}`)), /SHA-256 mismatch/i);
+assert.throws(() => parseWvk(envelope.replace(`SIZE=${original.length}`, "SIZE=999")), /파일 크기 불일치/);
+assert.throws(() => parseWvk(envelope.replace("C|000002", "C|000003")), /청크 순서 오류/);
+assert.throws(() => parseWvk(envelope.replace(/SHA256=[0-9a-f]+/, `SHA256=${"0".repeat(64)}`)), /SHA-256이 일치하지 않/);
 
 // --- text preview: valid UTF-8 is shown, binary is not ---
 const mixed = "한글 and English — 효율 100%\n둘째 줄\ttab\n";

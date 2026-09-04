@@ -231,22 +231,22 @@ bool setPreset(const String& name, const String& group,
 {
 	if (name.length() == 0U || name.length() > MAX_PRESET_LENGTH)
 	{
-		if (errMsg != nullptr) { *errMsg = "Bad name"; }
+		if (errMsg != nullptr) { *errMsg = "이름이 올바르지 않습니다"; }
 		return false;
 	}
 	if (hasValue && value.length() > MAX_VALUE_LENGTH)
 	{
-		if (errMsg != nullptr) { *errMsg = "Value too long"; }
+		if (errMsg != nullptr) { *errMsg = "값이 너무 깁니다"; }
 		return false;
 	}
 	if (group.length() > MAX_PRESET_LENGTH)
 	{
-		if (errMsg != nullptr) { *errMsg = "Group too long"; }
+		if (errMsg != nullptr) { *errMsg = "그룹 이름이 너무 깁니다"; }
 		return false;
 	}
 	if (!validVis(vis))
 	{
-		if (errMsg != nullptr) { *errMsg = "Bad visibility"; }
+		if (errMsg != nullptr) { *errMsg = "표시 방식이 올바르지 않습니다"; }
 		return false;
 	}
 
@@ -255,7 +255,7 @@ bool setPreset(const String& name, const String& group,
 	DeserializationError e = deserializeJson(doc, json);
 	if (e)
 	{
-		if (errMsg != nullptr) { *errMsg = "JSON parse error"; }
+		if (errMsg != nullptr) { *errMsg = "JSON 파싱 오류"; }
 		return false;
 	}
 	if (!doc.is<JsonArray>())
@@ -271,7 +271,7 @@ bool setPreset(const String& name, const String& group,
 	const int clashIdx = findPresetIndex(name, group);
 	if (clashIdx >= 0 && clashIdx != editIdx)
 	{
-		if (errMsg != nullptr) { *errMsg = "A preset with this name already exists in this group"; }
+		if (errMsg != nullptr) { *errMsg = "이 그룹에 같은 이름의 프리셋이 이미 있습니다"; }
 		return false;
 	}
 
@@ -645,18 +645,18 @@ void handleDecoder()
 void handleType() {
 	if (!requireAuth()) return;
 	if (transferActive() || hidTypingBusy()) {
-		server.send(409, "text/plain", "A transfer is active");
+		server.send(409, "text/plain; charset=utf-8", "전송이 진행 중입니다");
 		return;
 	}
 
 	if (!server.hasArg("text")) {
-		server.send(400, "text/plain", "Missing 'text'");
+		server.send(400, "text/plain; charset=utf-8", "'text' 항목이 없습니다");
 		return;
 	}
 
 	String text = server.arg("text");
 	if (text.length() > MAX_QUICK_TYPE_CHARS || !normalizeRawAscii(text)) {
-		sendJsonError(400, "text must be at most 2048 US-ASCII characters");
+		sendJsonError(400, "text는 US-ASCII 2048자 이하여야 합니다");
 		return;
 	}
 	const String nlArg = server.hasArg("newline") ? server.arg("newline") : "0";
@@ -665,7 +665,7 @@ void handleType() {
 	uint32_t delayValue = DEFAULT_CHAR_DELAY_MS;
 	if (server.hasArg("delayMs") &&
 		!parseUint32(server.arg("delayMs"), MAX_CHAR_DELAY_MS, delayValue)) {
-		sendJsonError(400, "delayMs must be between 0 and 100");
+		sendJsonError(400, "delayMs는 0에서 100 사이여야 합니다");
 		return;
 	}
 
@@ -685,7 +685,7 @@ void handleType() {
 		{ &newline, addNL ? 1U : 0U }
 	};
 	if (!queueSegments(segments, 2U, (uint16_t)delayValue)) {
-		sendJsonError(500, "Could not queue text");
+		sendJsonError(500, "텍스트를 큐에 넣을 수 없습니다");
 		return;
 	}
 	server.send(202, "text/plain", "QUEUED");
@@ -713,7 +713,7 @@ void handleTransferStart()
 	if (!requireAuth()) { return; }
 	if (transferActive() || hidTypingBusy())
 	{
-		sendJsonError(409, "A keyboard job is already active");
+		sendJsonError(409, "이미 진행 중인 키보드 작업이 있습니다");
 		return;
 	}
 
@@ -729,7 +729,7 @@ void handleTransferStart()
 	}
 	else
 	{
-		sendJsonError(400, "mode must be raw or wvk1");
+		sendJsonError(400, "mode는 raw 또는 wvk1이어야 합니다");
 		return;
 	}
 
@@ -737,14 +737,14 @@ void handleTransferStart()
 	if (filename.length() == 0U || filename.length() > MAX_TRANSFER_FILENAME ||
 		!isPrintableAscii(filename))
 	{
-		sendJsonError(400, "filename must be 1-128 printable ASCII characters");
+		sendJsonError(400, "filename은 출력 가능한 ASCII 1-128자여야 합니다");
 		return;
 	}
 
 	uint64_t byteSize = 0;
 	if (!server.hasArg("size") || !parseUint64(server.arg("size"), byteSize))
 	{
-		sendJsonError(400, "size must be an unsigned decimal integer");
+		sendJsonError(400, "size는 부호 없는 10진 정수여야 합니다");
 		return;
 	}
 
@@ -753,19 +753,19 @@ void handleTransferStart()
 	uint32_t total = 0;
 	if (!parseUint32(totalArg, MAX_TRANSFER_CHUNKS, total))
 	{
-		sendJsonError(400, "chunks must be between 0 and 999999");
+		sendJsonError(400, "chunks는 0에서 999999 사이여야 합니다");
 		return;
 	}
 	if ((byteSize == 0U) != (total == 0U))
 	{
-		sendJsonError(400, "empty size and zero chunks must be used together");
+		sendJsonError(400, "size를 비우려면 chunks도 0이어야 합니다");
 		return;
 	}
 
 	const String sha256 = server.hasArg("sha256") ? server.arg("sha256") : String();
 	if (sha256.length() != 0U && !isHexString(sha256, 64U))
 	{
-		sendJsonError(400, "sha256 must be empty or 64 hexadecimal characters");
+		sendJsonError(400, "sha256은 비어 있거나 16진수 64자여야 합니다");
 		return;
 	}
 
@@ -774,7 +774,7 @@ void handleTransferStart()
 		(server.hasArg("delay") ? server.arg("delay") : String());
 	if (delayArg.length() != 0U && !parseUint32(delayArg, MAX_CHAR_DELAY_MS, delayValue))
 	{
-		sendJsonError(400, "delayMs must be between 0 and 100");
+		sendJsonError(400, "delayMs는 0에서 100 사이여야 합니다");
 		return;
 	}
 
@@ -824,7 +824,7 @@ void handleTransferStart()
 		if (!queueOne(header, transfer.delayMs))
 		{
 			transfer.state = TransferState::ERROR_STATE;
-			strlcpy(transfer.error, "Could not queue WVK1 header", sizeof(transfer.error));
+			strlcpy(transfer.error, "WVK1 헤더를 큐에 넣을 수 없습니다", sizeof(transfer.error));
 			sendJsonError(500, transfer.error);
 			return;
 		}
@@ -846,7 +846,7 @@ void handleTransferChunk()
 	if (!requireAuth()) { return; }
 	if (!server.hasArg("id") || server.arg("id") != transfer.id || transfer.id[0] == '\0')
 	{
-		sendJsonError(404, "Unknown transfer id");
+		sendJsonError(404, "알 수 없는 전송 ID입니다");
 		return;
 	}
 
@@ -855,7 +855,7 @@ void handleTransferChunk()
 	uint32_t index = 0;
 	if (!parseUint32(indexArg, MAX_TRANSFER_CHUNKS - 1U, index))
 	{
-		sendJsonError(400, "index must be a zero-based unsigned integer");
+		sendJsonError(400, "index는 0부터 시작하는 부호 없는 정수여야 합니다");
 		return;
 	}
 
@@ -866,7 +866,7 @@ void handleTransferChunk()
 	}
 	if (index > transfer.next)
 	{
-		sendJsonError(409, "Out-of-order chunk", (int32_t)transfer.next);
+		sendJsonError(409, "청크 순서가 맞지 않습니다", (int32_t)transfer.next);
 		return;
 	}
 	// A lost HTTP response can cause the sender to retry while this exact chunk
@@ -878,12 +878,12 @@ void handleTransferChunk()
 	}
 	if (transfer.state != TransferState::READY || index >= transfer.total)
 	{
-		sendJsonError(409, "Transfer is not ready for this chunk", (int32_t)transfer.next);
+		sendJsonError(409, "이 청크를 받을 준비가 되지 않았습니다", (int32_t)transfer.next);
 		return;
 	}
 	if ((!server.hasArg("data") && !server.hasArg("plain")))
 	{
-		sendJsonError(400, "Missing data");
+		sendJsonError(400, "data 항목이 없습니다");
 		return;
 	}
 
@@ -893,7 +893,7 @@ void handleTransferChunk()
 	{
 		if (data.length() == 0U || !normalizeRawAscii(data))
 		{
-			sendJsonError(400, "raw data must be 1-2048 US-ASCII characters");
+			sendJsonError(400, "raw 데이터는 US-ASCII 1-2048자여야 합니다");
 			return;
 		}
 		queued = queueOne(data, transfer.delayMs);
@@ -902,12 +902,12 @@ void handleTransferChunk()
 	{
 		if (!isValidBase64(data))
 		{
-			sendJsonError(400, "data must be 1-2048 characters of padded Base64");
+			sendJsonError(400, "data는 패딩된 Base64 1-2048자여야 합니다");
 			return;
 		}
 		if (!server.hasArg("crc32") || !isHexString(server.arg("crc32"), 8U))
 		{
-			sendJsonError(400, "crc32 must be 8 hexadecimal characters");
+			sendJsonError(400, "crc32는 16진수 8자여야 합니다");
 			return;
 		}
 
@@ -929,7 +929,7 @@ void handleTransferChunk()
 	if (!queued)
 	{
 		transfer.state = TransferState::ERROR_STATE;
-		strlcpy(transfer.error, "Could not queue chunk", sizeof(transfer.error));
+		strlcpy(transfer.error, "청크를 큐에 넣을 수 없습니다", sizeof(transfer.error));
 		sendJsonError(500, transfer.error);
 		return;
 	}
@@ -955,7 +955,7 @@ void handleTransferCancel()
 	if (!requireAuth()) { return; }
 	if (server.hasArg("id") && server.arg("id") != transfer.id)
 	{
-		sendJsonError(404, "Unknown transfer id");
+		sendJsonError(404, "알 수 없는 전송 ID입니다");
 		return;
 	}
 
@@ -964,7 +964,7 @@ void handleTransferCancel()
 		hidTypingCancel();
 		transfer.state = TransferState::CANCELLED;
 		transfer.phase = TransferPhase::NONE;
-		strlcpy(transfer.error, "Cancelled by user", sizeof(transfer.error));
+		strlcpy(transfer.error, "사용자가 취소했습니다", sizeof(transfer.error));
 		LogSerial.printf("[TRANSFER] cancelled id=%s next=%lu\r\n",
 					 transfer.id, (unsigned long)transfer.next);
 	}
@@ -1069,7 +1069,7 @@ void handlePostWifi()
 
 	if (transferActive() || hidTypingBusy())
 	{
-		sendJsonError(409, "busy: a transfer or typing job is still running");
+		sendJsonError(409, "작업 중: 전송 또는 타이핑 작업이 진행 중입니다");
 		return;
 	}
 
@@ -1088,7 +1088,7 @@ void handlePostWifi()
 	}
 	else
 	{
-		sendJsonError(400, "mode must be \"auto\" or \"ap\"");
+		sendJsonError(400, "mode는 \"auto\" 또는 \"ap\"여야 합니다");
 		return;
 	}
 
@@ -1108,25 +1108,25 @@ void handlePostWifi()
 	{
 		// Reusing the old network's password for a new SSID would just fail at
 		// boot, so make the caller be explicit (empty = open network).
-		sendJsonError(400, "sta_pass is required when sta_ssid changes");
+		sendJsonError(400, "sta_ssid를 변경할 때는 sta_pass가 필요합니다");
 		return;
 	}
 
 	if (next.mode == WifiMode::AUTO && next.staSsid.length() == 0U)
 	{
-		sendJsonError(400, "sta_ssid is required in auto mode");
+		sendJsonError(400, "자동 모드에서는 sta_ssid가 필요합니다");
 		return;
 	}
 
 	if (next.staSsid.length() > 32U)
 	{
-		sendJsonError(400, "sta_ssid is too long");
+		sendJsonError(400, "sta_ssid가 너무 깁니다");
 		return;
 	}
 
 	if (next.staPass.length() > 63U)
 	{
-		sendJsonError(400, "sta_pass is too long");
+		sendJsonError(400, "sta_pass가 너무 깁니다");
 		return;
 	}
 
@@ -1137,7 +1137,7 @@ void handlePostWifi()
 
 		if (apSsid.length() > 32U)
 		{
-			sendJsonError(400, "ap_ssid is too long");
+			sendJsonError(400, "ap_ssid가 너무 깁니다");
 			return;
 		}
 
@@ -1155,13 +1155,13 @@ void handlePostWifi()
 		{
 			if (apPass.length() < AP_PASS_MIN_LEN)
 			{
-				sendJsonError(400, "ap_pass must be at least 8 characters");
+				sendJsonError(400, "ap_pass는 최소 8자 이상이어야 합니다");
 				return;
 			}
 
 			if (apPass.length() > 63U)
 			{
-				sendJsonError(400, "ap_pass is too long");
+				sendJsonError(400, "ap_pass가 너무 깁니다");
 				return;
 			}
 
@@ -1171,7 +1171,7 @@ void handlePostWifi()
 
 	if (!wifiSave(next))
 	{
-		sendJsonError(500, "could not save the network settings");
+		sendJsonError(500, "네트워크 설정을 저장할 수 없습니다");
 		return;
 	}
 
@@ -1311,7 +1311,7 @@ void handlePostPreset()
 
 	if (!server.hasArg("name"))
 	{
-		server.send(400, "text/plain", "Missing 'name'");
+		server.send(400, "text/plain; charset=utf-8", "'name' 항목이 없습니다");
 		return;
 	}
 
@@ -1327,7 +1327,7 @@ void handlePostPreset()
 	String err;
 	if (!setPreset(name, group, oldName, oldGroup, isEdit, value, hasValue, vis, &err))
 	{
-		server.send(400, "text/plain", err.length() ? err : String("Failed to save preset"));
+		server.send(400, "text/plain; charset=utf-8", err.length() ? err : String("프리셋을 저장할 수 없습니다"));
 		return;
 	}
 
@@ -1341,7 +1341,7 @@ void handleDeletePreset()
 
 	if (!server.hasArg("name"))
 	{
-		server.send(400, "text/plain", "Missing 'name'");
+		server.send(400, "text/plain; charset=utf-8", "'name' 항목이 없습니다");
 		return;
 	}
 
@@ -1350,7 +1350,7 @@ void handleDeletePreset()
 
 	if (!deletePreset(name, group))
 	{
-		server.send(404, "text/plain", "Not found");
+		server.send(404, "text/plain; charset=utf-8", "찾을 수 없습니다");
 		return;
 	}
 
@@ -1365,13 +1365,13 @@ void handleSendPreset()
 	if (!requireAuth()) { return; }
 	if (transferActive() || hidTypingBusy())
 	{
-		server.send(409, "text/plain", "A keyboard job is already active");
+		server.send(409, "text/plain; charset=utf-8", "이미 진행 중인 키보드 작업이 있습니다");
 		return;
 	}
 
 	if (!server.hasArg("name"))
 	{
-		server.send(400, "text/plain", "Missing 'name'");
+		server.send(400, "text/plain; charset=utf-8", "'name' 항목이 없습니다");
 		return;
 	}
 
@@ -1381,14 +1381,14 @@ void handleSendPreset()
 
 	if (deserializeJson(doc, json))
 	{
-		server.send(500, "text/plain", "JSON parse error");
+		server.send(500, "text/plain; charset=utf-8", "JSON 파싱 오류");
 		return;
 	}
 
 	const int idx = findPresetIndex(name, group);
 	if (idx < 0)
 	{
-		server.send(404, "text/plain", "Not found");
+		server.send(404, "text/plain; charset=utf-8", "찾을 수 없습니다");
 		return;
 	}
 

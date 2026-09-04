@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Web Virtual Keyboard</title>
+<title>Web Virtual Keyboard - 웹 가상 키보드</title>
 
 <style>
 :root {
@@ -37,7 +37,8 @@ body {
 	margin: 0;
 	background: var(--bg);
 	color: var(--text);
-	font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Arial, sans-serif;
+	font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic",
+		"Noto Sans KR", Segoe UI, Roboto, Ubuntu, Arial, sans-serif;
 	display: flex;
 	justify-content: center;
 	padding: 14px 6px;
@@ -429,8 +430,8 @@ input.invalid, textarea.invalid {
 		<!-- ===== Presets card (left, roomy) ===== -->
 		<div class="card">
 			<div class="card-head">
-				<h2>Presets</h2>
-				<button id="newPreset" class="btn-sm" type="button">+ New preset</button>
+				<h2>프리셋</h2>
+				<button id="newPreset" class="btn-sm" type="button">+ 새 프리셋</button>
 			</div>
 
 			<div id="plist"></div>
@@ -438,17 +439,17 @@ input.invalid, textarea.invalid {
 
 		<!-- ===== Raw typing card (right) ===== -->
 		<div class="card send-card">
-			<h2 style="margin-bottom:12px">Type text</h2>
+			<h2 style="margin-bottom:12px">텍스트 타이핑</h2>
 
 			<div class="row">
-				<textarea id="text" placeholder="Enter text here (Shift+Enter for newline, Enter to send)" autocomplete="off" autofocus></textarea>
+				<textarea id="text" placeholder="여기에 텍스트를 입력하세요 (Shift+Enter 줄바꿈, Enter 전송)" autocomplete="off" autofocus></textarea>
 			</div>
 
 			<div class="row">
-				<button id="send" class="btn-sm" type="button">Send</button>
+				<button id="send" class="btn-sm" type="button">전송</button>
 				<label class="checkbox" for="appendNL">
 					<input type="checkbox" id="appendNL" checked>
-					<span>Add CRLF</span>
+					<span>CRLF 추가</span>
 				</label>
 			</div>
 		</div>
@@ -459,70 +460,70 @@ input.invalid, textarea.invalid {
 		<section class="card transfer-card" aria-labelledby="transferTitle">
 			<div class="card-head transfer-card-head">
 				<div>
-					<h2 id="transferTitle">File / text transfer</h2>
-					<div class="small" style="margin-top:5px">Type a text file directly, or wrap any file - or any UTF-8 text - in the checked WVK1 format.</div>
+					<h2 id="transferTitle">파일 / 텍스트 전송</h2>
+					<div class="small" style="margin-top:5px">텍스트 파일을 그대로 타이핑하거나, 모든 파일 또는 UTF-8 텍스트를 검증형 WVK1 형식으로 감싸 보냅니다.</div>
 				</div>
 				<div class="transfer-head-actions">
-					<a class="button-link btn-ghost btn-sm" href="/decoder.html" target="_blank" rel="noopener">Open decoder</a>
-					<button id="installDecoder" class="btn-ghost btn-sm" type="button">Type decoder source</button>
+					<a class="button-link btn-ghost btn-sm" href="/decoder.html" target="_blank" rel="noopener">디코더 열기</a>
+					<button id="installDecoder" class="btn-ghost btn-sm" type="button">디코더 소스 타이핑</button>
 				</div>
 			</div>
 
 			<div class="transfer-grid">
 				<label id="fileDrop" class="file-drop" for="fileInput">
 					<input id="fileInput" type="file">
-					<strong>Choose a file</strong>
-					<span class="small">or drop it here</span>
-					<span id="fileMeta" class="file-meta small">No file selected</span>
+					<strong>파일 선택</strong>
+					<span class="small">또는 여기에 끌어다 놓기</span>
+					<span id="fileMeta" class="file-meta small">선택된 파일 없음</span>
 				</label>
 
 				<div class="transfer-options">
 					<label class="compact-field wide">
-						<span class="field-label">Transfer mode</span>
+						<span class="field-label">전송 모드</span>
 						<select id="transferMode">
-							<option value="auto">Auto (recommended)</option>
-							<option value="raw">Raw text</option>
+							<option value="auto">자동 (권장)</option>
+							<option value="raw">원문 텍스트</option>
 							<option value="wvk1">WVK1 / Base64</option>
 						</select>
 					</label>
 					<label class="compact-field">
-						<span class="field-label">Chunk bytes</span>
+						<span class="field-label">청크 바이트</span>
 						<input id="chunkSize" type="number" min="96" max="1536" step="96" value="768" inputmode="numeric">
 					</label>
 					<label class="compact-field">
-						<span class="field-label">Key delay (ms)</span>
+						<span class="field-label">키 간격 (ms)</span>
 						<input id="keyDelay" type="number" min="0" max="100" step="1" value="5" inputmode="numeric">
 					</label>
-					<div id="transferHint" class="transfer-hint small wide">Choose a file to see the selected mode.</div>
+					<div id="transferHint" class="transfer-hint small wide">파일을 선택하면 적용될 모드가 표시됩니다.</div>
 				</div>
 			</div>
 
 			<div class="text-send">
-				<label class="field-label" for="wvkText">Or send text as WVK1 (UTF-8, any script)</label>
-				<textarea id="wvkText" placeholder="Paste text here. Only Base64 is typed, so the decoder shows the original characters - Korean included." autocomplete="off" spellcheck="false"></textarea>
+				<label class="field-label" for="wvkText">텍스트를 WVK1로 보내기 (UTF-8, 모든 문자)</label>
+				<textarea id="wvkText" placeholder="여기에 텍스트를 붙여 넣으세요. 실제로 타이핑되는 것은 Base64뿐이므로 디코더가 한글을 포함한 원본 문자를 그대로 보여 줍니다." autocomplete="off" spellcheck="false"></textarea>
 				<div class="text-send-row">
-					<button id="sendTextWvk" class="btn-sm" type="button" disabled>Send text as WVK1</button>
-					<span id="textSendMeta" class="small">Nothing to send yet.</span>
+					<button id="sendTextWvk" class="btn-sm" type="button" disabled>텍스트를 WVK1로 전송</button>
+					<span id="textSendMeta" class="small">보낼 내용이 없습니다.</span>
 				</div>
 			</div>
 
 			<div id="transferStatus" class="transfer-status" hidden>
-				<div class="progress-track" role="progressbar" aria-label="Transfer progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+				<div class="progress-track" role="progressbar" aria-label="전송 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
 					<div id="progressBar" class="progress-bar"></div>
 				</div>
 				<div class="progress-copy small">
-					<span id="progressLabel">Ready</span>
+					<span id="progressLabel">준비됨</span>
 					<span id="progressPercent">0%</span>
 				</div>
 			</div>
 
 			<div class="transfer-actions">
-				<button id="startTransfer" class="btn-sm" type="button" disabled>Start transfer</button>
-				<button id="stopTransfer" class="btn-danger btn-sm" type="button" hidden>Stop</button>
-				<button id="resumeTransfer" class="btn-ghost btn-sm" type="button" hidden>Retry / Resume</button>
+				<button id="startTransfer" class="btn-sm" type="button" disabled>전송 시작</button>
+				<button id="stopTransfer" class="btn-danger btn-sm" type="button" hidden>중지</button>
+				<button id="resumeTransfer" class="btn-ghost btn-sm" type="button" hidden>재시도 / 이어서</button>
 			</div>
 			<div class="decoder-note small">
-				For first-time setup, open a plain-text editor on the target computer, click <b>Type decoder source</b>, and save it as <code>decoder.html</code>. Open that file in Chrome, focus its data box, then send WVK1 files or text from here. Anything that decodes to valid UTF-8 text is shown in the decoder instead of being downloaded.
+				최초 설정 시에는 대상 컴퓨터에서 일반 텍스트 편집기를 열고 <b>디코더 소스 타이핑</b>을 누른 뒤 <code>decoder.html</code>로 저장하세요. 그 파일을 Chrome에서 열어 데이터 입력창을 포커스한 다음, 여기서 WVK1 파일이나 텍스트를 보내면 됩니다. 디코딩 결과가 올바른 UTF-8 텍스트이면 내려받지 않고 디코더 화면에 표시됩니다.
 			</div>
 		</section>
 
@@ -531,62 +532,62 @@ input.invalid, textarea.invalid {
 			<div class="card-head">
 				<div>
 					<h2 id="wifiTitle">Wi-Fi</h2>
-					<div class="small wifi-mode-note" id="wifiNow">Loading &hellip;</div>
+					<div class="small wifi-mode-note" id="wifiNow">불러오는 중 &hellip;</div>
 				</div>
-				<button id="wifiScan" class="btn-ghost btn-sm" type="button">Scan</button>
+				<button id="wifiScan" class="btn-ghost btn-sm" type="button">스캔</button>
 			</div>
 
 			<div class="radios radios--stack" style="margin-bottom:16px">
 				<label>
 					<input type="radio" name="wifiMode" value="auto" checked>
-					<span><b>Auto</b> &mdash; join the network below, fall back to the device's own access point</span>
+					<span><b>자동</b> &mdash; 아래 네트워크에 접속하고, 실패하면 장치 자체 액세스 포인트로 전환</span>
 				</label>
 				<label>
 					<input type="radio" name="wifiMode" value="ap">
-					<span><b>Access point only</b> &mdash; always run the device's own network, never join another</span>
+					<span><b>액세스 포인트 전용</b> &mdash; 항상 장치 자체 네트워크만 운영하고 다른 네트워크에 접속하지 않음</span>
 				</label>
 			</div>
 
 			<div class="field-grid" id="wifiStaFields">
 				<label class="compact-field">
-					<span class="field-label">Network (SSID) <span class="field-error" id="wifiSsidErr"></span></span>
-					<input id="wifiSsid" type="text" list="wifiNets" autocomplete="off" placeholder="Your Wi-Fi name">
+					<span class="field-label">네트워크 (SSID) <span class="field-error" id="wifiSsidErr"></span></span>
+					<input id="wifiSsid" type="text" list="wifiNets" autocomplete="off" placeholder="사용할 Wi-Fi 이름">
 					<datalist id="wifiNets"></datalist>
 				</label>
 				<label class="compact-field">
-					<span class="field-label">Password</span>
-					<input id="wifiPass" type="password" autocomplete="new-password" placeholder="Leave empty to keep the saved one">
+					<span class="field-label">비밀번호</span>
+					<input id="wifiPass" type="password" autocomplete="new-password" placeholder="비워 두면 저장된 값 유지">
 				</label>
-				<div class="small wide" id="wifiScanHint">Press <b>Scan</b> to list nearby networks. Scanning briefly interrupts anything connected to the access point.</div>
+				<div class="small wide" id="wifiScanHint"><b>스캔</b>을 누르면 주변 네트워크를 찾습니다. 스캔하는 동안 액세스 포인트에 접속된 기기가 잠시 끊길 수 있습니다.</div>
 			</div>
 
 			<details class="wifi-advanced">
-				<summary class="small">Access point settings</summary>
+				<summary class="small">액세스 포인트 설정</summary>
 				<div class="field-grid" style="margin-top:12px">
 					<label class="compact-field">
-						<span class="field-label">AP name (SSID)</span>
+						<span class="field-label">AP 이름 (SSID)</span>
 						<input id="wifiApSsid" type="text" autocomplete="off">
 					</label>
 					<label class="compact-field">
-						<span class="field-label">AP password <span class="field-error" id="wifiApPassErr"></span></span>
-						<input id="wifiApPass" type="password" autocomplete="new-password" placeholder="Leave empty to keep the saved one">
+						<span class="field-label">AP 비밀번호 <span class="field-error" id="wifiApPassErr"></span></span>
+						<input id="wifiApPass" type="password" autocomplete="new-password" placeholder="비워 두면 저장된 값 유지">
 					</label>
-					<div class="small wide">The access point serves this page at <code>192.168.4.1</code>. Its password is shown on the device display &mdash; at least 8 characters, an open access point is not allowed.</div>
+					<div class="small wide">액세스 포인트는 <code>192.168.4.1</code>에서 이 페이지를 제공합니다. 비밀번호는 장치 화면에 표시되며, 최소 8자 이상이어야 하고 개방형 액세스 포인트는 허용되지 않습니다.</div>
 				</div>
 			</details>
 
 			<div class="transfer-actions">
-				<button id="wifiSave" class="btn-sm" type="button">Save &amp; reboot</button>
+				<button id="wifiSave" class="btn-sm" type="button">저장 후 재부팅</button>
 			</div>
 			<div class="decoder-note small">
-				Saving reboots the device, so this page loses its connection. Reconnect to the network you chose &mdash; in access point mode that is the device's own network at <code>192.168.4.1</code>. Holding the <b>BOOT</b> button for 3 seconds always brings the access point back up.
+				저장하면 장치가 재부팅되므로 이 페이지의 연결이 끊깁니다. 선택한 네트워크로 다시 접속하세요. 액세스 포인트 모드라면 <code>192.168.4.1</code>의 장치 자체 네트워크입니다. <b>BOOT</b> 버튼을 3초간 누르고 있으면 언제든 액세스 포인트를 다시 띄울 수 있습니다.
 			</div>
 		</section>
 
 		<footer class="footer small">
-		<span>FW&nbsp;<b id="fwVer">-</b></span>
+		<span>펌웨어&nbsp;<b id="fwVer">-</b></span>
 		<span class="footer-sep">·</span>
-		<span>Storage&nbsp;<b id="storVer">-</b></span>
+		<span>저장소&nbsp;<b id="storVer">-</b></span>
 	</footer>
 </div>
 
@@ -594,40 +595,40 @@ input.invalid, textarea.invalid {
 <div id="modal" class="modal-backdrop" hidden>
 	<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
 		<div class="modal-head">
-			<h3 id="modalTitle">New preset</h3>
+			<h3 id="modalTitle">새 프리셋</h3>
 			<div class="modal-actions">
-				<button id="mCancel" class="btn-ghost btn-sm" type="button">Cancel</button>
-				<button id="mSave" class="btn-sm" type="button">Save</button>
+				<button id="mCancel" class="btn-ghost btn-sm" type="button">취소</button>
+				<button id="mSave" class="btn-sm" type="button">저장</button>
 			</div>
 		</div>
 
 		<div class="modal-grid">
 			<div class="modal-col">
 				<label class="field">
-					<span class="field-label">Name <span class="field-error" id="nameErr"></span></span>
-					<input id="mName" type="text" placeholder="Preset name" autocomplete="off">
+					<span class="field-label">이름 <span class="field-error" id="nameErr"></span></span>
+					<input id="mName" type="text" placeholder="프리셋 이름" autocomplete="off">
 				</label>
 
 				<label class="field">
-					<span class="field-label">Value <span class="field-error" id="valueErr"></span></span>
-					<textarea id="mValue" placeholder="Type text and insert special keys below" autocomplete="off"></textarea>
+					<span class="field-label">값 <span class="field-error" id="valueErr"></span></span>
+					<textarea id="mValue" placeholder="텍스트를 입력하고 아래에서 특수 키를 넣으세요" autocomplete="off"></textarea>
 				</label>
 
-				<div class="palette" id="palette" aria-label="Special key builder"></div>
+				<div class="palette" id="palette" aria-label="특수 키 빌더"></div>
 			</div>
 
 			<div class="modal-col">
 				<label class="field">
-					<span class="field-label">Group</span>
-					<input id="mGroup" type="text" placeholder="Group name (optional)" autocomplete="off">
+					<span class="field-label">그룹</span>
+					<input id="mGroup" type="text" placeholder="그룹 이름 (선택)" autocomplete="off">
 				</label>
 
 				<div class="field">
-					<span class="field-label">Visibility</span>
+					<span class="field-label">표시 방식</span>
 					<div class="radios radios--stack">
-						<label><input type="radio" name="vis" value="plain"><span>Plaintext</span></label>
-						<label><input type="radio" name="vis" value="mask" checked><span>Masked (••••)</span></label>
-						<label><input type="radio" name="vis" value="hidden"><span>Hidden</span></label>
+						<label><input type="radio" name="vis" value="plain"><span>평문</span></label>
+						<label><input type="radio" name="vis" value="mask" checked><span>마스킹 (••••)</span></label>
+						<label><input type="radio" name="vis" value="hidden"><span>숨김</span></label>
 					</div>
 				</div>
 
@@ -693,11 +694,11 @@ const wifiScanHint = document.getElementById("wifiScanHint");
 
 /* Token palette — names must match the firmware key table. */
 const PALETTE = [
-	["Modifiers",  ["CTRL", "ALT", "SHIFT", "WIN"]],
-	["Keys",       ["ENTER", "TAB", "SPACE", "BKSP", "DEL", "ESC", "INS"]],
-	["Navigation", ["UP", "DOWN", "LEFT", "RIGHT", "HOME", "END", "PGUP", "PGDN"]],
-	["System",     ["CAPS", "SCRLK", "NUMLK", "PRTSC", "PAUSE", "MENU"]],
-	["Function",   ["F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12"]],
+	["수정 키",  ["CTRL", "ALT", "SHIFT", "WIN"]],
+	["일반 키",  ["ENTER", "TAB", "SPACE", "BKSP", "DEL", "ESC", "INS"]],
+	["탐색",     ["UP", "DOWN", "LEFT", "RIGHT", "HOME", "END", "PGUP", "PGDN"]],
+	["시스템",   ["CAPS", "SCRLK", "NUMLK", "PRTSC", "PAUSE", "MENU"]],
+	["기능 키",  ["F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12"]],
 ];
 
 let editing = null;       // { name, group } of the preset being edited, or null when creating
@@ -711,7 +712,7 @@ function setMsg(t, cls) {
 	toast.className = "toast show" + (cls ? " " + cls : "");
 
 	if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
-	// In-progress messages (no class, e.g. "Sending …") stay until the result
+	// In-progress messages (no class, e.g. "전송 중 …") stay until the result
 	// replaces them; ok / err / warn results auto-dismiss after a few seconds.
 	if (cls) { toastTimer = setTimeout(() => toast.classList.remove("show"), 3200); }
 }
@@ -803,7 +804,7 @@ function safeFilename(name) {
 
 function updateTransferHint() {
 	if (!selectedFile || !selectedBytes) {
-		transferHint.textContent = "Choose a file to see the selected mode.";
+		transferHint.textContent = "파일을 선택하면 적용될 모드가 표시됩니다.";
 		transferHint.className = "transfer-hint small wide";
 		startTransfer.disabled = true;
 		return;
@@ -813,11 +814,11 @@ function updateTransferHint() {
 	const rawForcedOnBinary = mode === "raw" && !selectedIsRaw;
 	transferHint.className = "transfer-hint small wide" + (rawForcedOnBinary ? " transfer-warning" : "");
 	if (rawForcedOnBinary) {
-		transferHint.textContent = "Raw mode only supports US-ASCII text (plus tab and line breaks). Choose WVK1 for this file.";
+		transferHint.textContent = "원문 모드는 US-ASCII 텍스트(및 탭·줄바꿈)만 지원합니다. 이 파일에는 WVK1을 선택하세요.";
 	} else if (mode === "raw") {
-		transferHint.textContent = (transferMode.value === "auto" ? "Auto selected Raw text" : "Raw text") + ": bytes will be typed directly with no recovery envelope.";
+		transferHint.textContent = (transferMode.value === "auto" ? "자동 선택: 원문 텍스트" : "원문 텍스트") + " - 복구 봉투 없이 바이트를 그대로 타이핑합니다.";
 	} else {
-		transferHint.textContent = (transferMode.value === "auto" ? "Auto selected WVK1" : "WVK1") + ": Base64, per-chunk CRC32, size, order and SHA-256 will be verified by decoder.html.";
+		transferHint.textContent = (transferMode.value === "auto" ? "자동 선택: WVK1" : "WVK1") + " - Base64, 청크별 CRC32, 크기, 순서, SHA-256을 decoder.html이 검증합니다.";
 	}
 	startTransfer.disabled = transferBusy || rawForcedOnBinary;
 }
@@ -826,16 +827,16 @@ function updateTextSendMeta() {
 	const value = wvkTextInput.value || "";
 	if (!value) {
 		textSendMeta.className = "small";
-		textSendMeta.textContent = "Nothing to send yet.";
+		textSendMeta.textContent = "보낼 내용이 없습니다.";
 		sendTextWvk.disabled = true;
 		return;
 	}
 	const bytes = utf8Bytes(value).length;
 	const chunkBytes = clampNumber(chunkSizeInput.value, 96, 1536, 768);
 	textSendMeta.className = "small";
-	textSendMeta.textContent = value.length + " characters - " + formatBytes(bytes) +
-		" UTF-8 - " + Math.ceil(bytes / chunkBytes) + " chunk(s)" +
-		(isAsciiTypable(value) ? "" : " - non-ASCII, decoder required");
+	textSendMeta.textContent = value.length + "자 - UTF-8 " + formatBytes(bytes) +
+		" - 청크 " + Math.ceil(bytes / chunkBytes) + "개" +
+		(isAsciiTypable(value) ? "" : " - ASCII 외 문자 포함, 디코더 필요");
 	sendTextWvk.disabled = transferBusy;
 }
 
@@ -846,12 +847,12 @@ async function selectTransferFile(file) {
 	selectedIsRaw = false;
 	resumeTransfer.hidden = true;
 	if (!file) {
-		fileMeta.textContent = "No file selected";
+		fileMeta.textContent = "선택된 파일 없음";
 		updateTransferHint();
 		return;
 	}
 
-	fileMeta.textContent = file.name + " - reading...";
+	fileMeta.textContent = file.name + " - 읽는 중...";
 	startTransfer.disabled = true;
 	try {
 		const bytes = new Uint8Array(await file.arrayBuffer());
@@ -863,9 +864,9 @@ async function selectTransferFile(file) {
 	} catch (e) {
 		if (token !== selectionToken) { return; }
 		selectedFile = null;
-		fileMeta.textContent = "Could not read that file";
+		fileMeta.textContent = "파일을 읽을 수 없습니다";
 		updateTransferHint();
-		setMsg("Reading file failed", "err");
+		setMsg("파일 읽기 실패", "err");
 	}
 }
 
@@ -959,7 +960,7 @@ function setProgress(done, total, label) {
 	transferStatus.hidden = false;
 	progressBar.style.width = percent + "%";
 	progressPercent.textContent = percent + "%";
-	progressLabel.textContent = label || (done + " / " + total + " chunks");
+	progressLabel.textContent = label || ("청크 " + done + " / " + total);
 	const track = transferStatus.querySelector("[role=progressbar]");
 	track.setAttribute("aria-valuenow", String(percent));
 }
@@ -982,13 +983,13 @@ function makeTransfer(bytes, filename, mode, label) {
 	const delayMs = clampNumber(keyDelayInput.value, 0, 100, 5);
 	chunkSizeInput.value = String(chunkBytes);
 	keyDelayInput.value = String(delayMs);
-	if (mode === "raw" && !isRawSafe(bytes)) { throw new Error("Raw mode requires a US-ASCII text file"); }
+	if (mode === "raw" && !isRawSafe(bytes)) { throw new Error("원문 모드에는 US-ASCII 텍스트 파일이 필요합니다"); }
 	if (mode === "raw") { bytes = normalizeRawBytes(bytes); }
 	const safeName = safeFilename(filename);
 	return {
 		bytes,
 		filename: safeName,
-		label: label || ('File "' + safeName + '"'),
+		label: label || ('파일 "' + safeName + '"'),
 		mode,
 		chunkBytes,
 		delayMs,
@@ -1018,9 +1019,24 @@ function statusNext(status) {
 
 function terminalStatusError(status) {
 	const state = String(status.state || "").toLowerCase();
-	if (state === "error") { return status.error || "Device reported a transfer error"; }
-	if (state === "cancelled" || state === "canceled") { return "Transfer was cancelled"; }
+	if (state === "error") { return status.error || "장치가 전송 오류를 보고했습니다"; }
+	if (state === "cancelled" || state === "canceled") { return "전송이 취소되었습니다"; }
 	return "";
+}
+
+// A device-side dead end: retrying cannot help, so waitForTransfer rethrows at
+// once instead of polling five more times. Flagged on the error object rather
+// than matched on its text, so the messages stay translatable.
+function terminalError(message) {
+	const err = new Error(message);
+	err.terminal = true;
+	return err;
+}
+
+function stoppedError() {
+	const err = new Error("전송을 중지했습니다");
+	err.stopped = true;
+	return err;
 }
 
 async function waitForTransfer(job, predicate, label) {
@@ -1029,19 +1045,19 @@ async function waitForTransfer(job, predicate, label) {
 		try {
 			const status = await getTransferStatus();
 			failures = 0;
-			if (!sameTransfer(job, status)) { throw new Error("The device is handling a different transfer"); }
-			const terminalError = terminalStatusError(status);
-			if (terminalError) { throw new Error(terminalError); }
+			if (!sameTransfer(job, status)) { throw terminalError("장치가 다른 전송을 처리하고 있습니다"); }
+			const terminal = terminalStatusError(status);
+			if (terminal) { throw terminalError(terminal); }
 			job.next = Math.min(job.total, statusNext(status));
-			setProgress(job.next, job.total, label || ("Typing chunk " + Math.min(job.next + 1, job.total) + " of " + job.total));
+			setProgress(job.next, job.total, label || ("청크 타이핑 중 " + Math.min(job.next + 1, job.total) + " / " + job.total));
 			if (predicate(status)) { return status; }
 		} catch (e) {
 			failures++;
-			if (failures >= 5 || /different transfer|cancelled|transfer error/i.test(e.message || "")) { throw e; }
+			if (failures >= 5 || e.terminal) { throw e; }
 		}
 		await sleep(180);
 	}
-	throw new Error("Transfer stopped");
+	throw stoppedError();
 }
 
 async function waitUntilReady(job, index) {
@@ -1049,7 +1065,7 @@ async function waitUntilReady(job, index) {
 		const next = statusNext(status);
 		const state = String(status.state || "").toLowerCase();
 		return next > index || state === "ready" || state === "complete";
-	}, "Waiting for device...");
+	}, "장치를 기다리는 중...");
 }
 
 async function postChunkWithRetry(job, index, chunk) {
@@ -1072,7 +1088,7 @@ async function postChunkWithRetry(job, index, chunk) {
 			} catch (ignored) { /* retry the idempotent chunk */ }
 		}
 	}
-	throw lastError || new Error("Chunk upload failed");
+	throw lastError || new Error("청크 업로드에 실패했습니다");
 }
 
 async function runTransfer(job, resume) {
@@ -1081,10 +1097,10 @@ async function runTransfer(job, resume) {
 	setTransferBusy(true);
 	try {
 		if (!resume) {
-			setProgress(0, job.total, job.mode === "wvk1" ? "Calculating SHA-256..." : "Starting...");
+			setProgress(0, job.total, job.mode === "wvk1" ? "SHA-256 계산 중..." : "시작하는 중...");
 			await sleep(0);
 			if (job.mode === "wvk1") { job.sha256 = sha256Hex(job.bytes); }
-			if (job.cancelRequested) { throw new Error("Transfer stopped"); }
+			if (job.cancelRequested) { throw stoppedError(); }
 			const started = await postForm("/transfer/start", {
 				mode: job.mode,
 				filename: job.filename,
@@ -1093,7 +1109,7 @@ async function runTransfer(job, resume) {
 				sha256: job.sha256,
 				delayMs: job.delayMs
 			});
-			if (started.id == null || started.id === "") { throw new Error("Device did not return a transfer id"); }
+			if (started.id == null || started.id === "") { throw new Error("장치가 전송 ID를 반환하지 않았습니다"); }
 			job.id = String(started.id);
 			job.next = statusNext(started);
 		}
@@ -1105,7 +1121,7 @@ async function runTransfer(job, resume) {
 			if (next > index) { index = next; continue; }
 			if (String(ready.state || "").toLowerCase() === "complete") { index = job.total; break; }
 
-			setProgress(index, job.total, "Sending chunk " + (index + 1) + " of " + job.total);
+			setProgress(index, job.total, "청크 전송 중 " + (index + 1) + " / " + job.total);
 			const chunk = transferChunk(job, index);
 			await postChunkWithRetry(job, index, chunk);
 			const completed = await waitForTransfer(job, s => statusNext(s) > index || String(s.state || "").toLowerCase() === "complete");
@@ -1113,20 +1129,20 @@ async function runTransfer(job, resume) {
 			job.next = index;
 		}
 
-		if (job.cancelRequested) { throw new Error("Transfer stopped"); }
-		await waitForTransfer(job, s => String(s.state || "").toLowerCase() === "complete", "Finishing...");
-		setProgress(job.total || 1, job.total || 1, "Transfer complete - decode on the target computer");
-		setMsg(job.label + " sent", "ok");
+		if (job.cancelRequested) { throw stoppedError(); }
+		await waitForTransfer(job, s => String(s.state || "").toLowerCase() === "complete", "마무리 중...");
+		setProgress(job.total || 1, job.total || 1, "전송 완료 - 대상 컴퓨터에서 디코딩하세요");
+		setMsg(job.label + " 전송 완료", "ok");
 		activeTransfer = null;
 	} catch (e) {
-		if (job.cancelRequested || /stopped|cancelled/i.test(e.message || "")) {
-			setProgress(job.next, job.total, "Transfer stopped");
+		if (job.cancelRequested || e.stopped) {
+			setProgress(job.next, job.total, "전송 중지됨");
 			activeTransfer = null;
-			setMsg("Transfer stopped", "warn");
+			setMsg("전송을 중지했습니다", "warn");
 		} else {
-			setProgress(job.next, job.total, "Paused: " + (e.message || "transfer failed"));
+			setProgress(job.next, job.total, "일시 중지: " + (e.message || "전송 실패"));
 			resumeTransfer.hidden = !job.id;
-			setMsg("Transfer paused - retry is available", "err");
+			setMsg("전송이 일시 중지되었습니다 - 재시도할 수 있습니다", "err");
 		}
 	} finally {
 		setTransferBusy(false);
@@ -1138,26 +1154,26 @@ async function beginSelectedTransfer() {
 	try {
 		const job = makeTransfer(selectedBytes, selectedFile.name, resolvedTransferMode());
 		await runTransfer(job, false);
-	} catch (e) { setMsg(e.message || "Could not start transfer", "err"); }
+	} catch (e) { setMsg(e.message || "전송을 시작할 수 없습니다", "err"); }
 }
 
 async function beginTextTransfer() {
 	if (transferBusy) { return; }
 	const value = wvkTextInput.value || "";
-	if (!value) { setMsg("Enter some text to send", "warn"); return; }
+	if (!value) { setMsg("보낼 텍스트를 입력하세요", "warn"); return; }
 	try {
 		// Always WVK1, whatever the mode select says: raw mode types the bytes
 		// as keycodes, and a UTF-8 byte over 0x7f lands on an unrelated key.
-		const job = makeTransfer(utf8Bytes(value), "message.txt", "wvk1", "Text");
+		const job = makeTransfer(utf8Bytes(value), "message.txt", "wvk1", "텍스트");
 		await runTransfer(job, false);
-	} catch (e) { setMsg(e.message || "Could not start text transfer", "err"); }
+	} catch (e) { setMsg(e.message || "텍스트 전송을 시작할 수 없습니다", "err"); }
 }
 
 async function stopActiveTransfer() {
 	const job = activeTransfer;
 	if (!job) { return; }
 	job.cancelRequested = true;
-	setProgress(job.next, job.total, "Stopping...");
+	setProgress(job.next, job.total, "중지하는 중...");
 	try { if (job.id) { await postForm("/transfer/cancel", { id: job.id }); } }
 	catch (e) { /* the local loop still stops */ }
 }
@@ -1167,31 +1183,31 @@ async function resumeActiveTransfer() {
 	if (!job || transferBusy) { return; }
 	try {
 		const status = await getTransferStatus();
-		if (!sameTransfer(job, status)) { throw new Error("Device no longer has this transfer"); }
+		if (!sameTransfer(job, status)) { throw new Error("장치에 이 전송이 더 이상 없습니다"); }
 		const state = String(status.state || "").toLowerCase();
-		if (state === "cancelled" || state === "canceled" || state === "idle") { throw new Error("Transfer cannot be resumed; clear the target and start again"); }
+		if (state === "cancelled" || state === "canceled" || state === "idle") { throw new Error("이 전송은 이어서 진행할 수 없습니다. 대상 문서를 비우고 다시 시작하세요"); }
 		job.next = Math.min(job.total, statusNext(status));
 		job.cancelRequested = false;
 		await runTransfer(job, true);
-	} catch (e) { setMsg(e.message || "Resume failed", "err"); }
+	} catch (e) { setMsg(e.message || "이어서 진행하지 못했습니다", "err"); }
 }
 
 async function typeDecoderSource() {
 	if (transferBusy) { return; }
-	if (!confirm("Open a plain-text editor on the target computer and focus the empty document. Type decoder.html source now?")) { return; }
+	if (!confirm("대상 컴퓨터에서 일반 텍스트 편집기를 열고 빈 문서를 포커스하세요. 지금 decoder.html 소스를 타이핑할까요?")) { return; }
 	try {
-		setMsg("Loading decoder source...", "");
+		setMsg("디코더 소스를 불러오는 중...", "");
 		const response = await fetch("/decoder.html", { cache: "no-store" });
-		if (!response.ok) { throw new Error("decoder.html is not available on the device"); }
+		if (!response.ok) { throw new Error("장치에서 decoder.html을 가져올 수 없습니다"); }
 		const source = await response.text();
 		const bytes = new Uint8Array(source.length);
 		for (let i = 0; i < source.length; i++) {
 			const code = source.charCodeAt(i);
-			if (code > 127) { throw new Error("Decoder source is not US-ASCII"); }
+			if (code > 127) { throw new Error("디코더 소스가 US-ASCII가 아닙니다"); }
 			bytes[i] = code;
 		}
 		await runTransfer(makeTransfer(bytes, "decoder.html", "raw"), false);
-	} catch (e) { setMsg(e.message || "Could not type decoder source", "err"); }
+	} catch (e) { setMsg(e.message || "디코더 소스를 타이핑할 수 없습니다", "err"); }
 }
 
 fileInput.addEventListener("change", () => selectTransferFile(fileInput.files && fileInput.files[0]));
@@ -1241,14 +1257,14 @@ async function sendText(value) {
 	// HID types keycodes, not characters: anything outside US-ASCII has no
 	// keycode and the device rejects it. Point at the WVK1 text path instead.
 	if (!isAsciiTypable(value)) {
-		setMsg('This box types US-ASCII only. For Korean or other non-ASCII text, use "Send text as WVK1" in the transfer card.', "err");
+		setMsg('이 입력창은 US-ASCII만 타이핑합니다. 한글 등 ASCII 외 텍스트는 전송 카드의 "텍스트를 WVK1로 전송"을 사용하세요.', "err");
 		return;
 	}
 
 	const newlineFlag = cbNL.checked ? "1" : "0";
 	const body = "text=" + encodeURIComponent(value) + "&newline=" + newlineFlag;
 
-	setMsg("Sending ...", "");
+	setMsg("전송 중 ...", "");
 	btn.disabled = true;
 	try {
 		const r = await fetch("/type", {
@@ -1261,14 +1277,14 @@ async function sendText(value) {
 			throw new Error(detail || "HTTP " + r.status);
 		}
 		if (r.status === 202) {
-			setMsg("Typing text...", "");
+			setMsg("텍스트를 타이핑하는 중...", "");
 			await waitForQuickTyping();
 		}
-		setMsg("Text sent", "ok");
+		setMsg("텍스트를 전송했습니다", "ok");
 		text.value = "";
 		text.focus();
 	} catch (e) {
-		setMsg("Sending text failed" + (e && e.message ? ": " + e.message : ""), "err");
+		setMsg("텍스트 전송 실패" + (e && e.message ? ": " + e.message : ""), "err");
 	} finally {
 		btn.disabled = false;
 	}
@@ -1282,7 +1298,7 @@ btn.addEventListener("click", () => sendText(text.value || ""));
 const isTouchDevice = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
 
 if (isTouchDevice) {
-	text.placeholder = "Enter text here";
+	text.placeholder = "여기에 텍스트를 입력하세요";
 } else {
 	text.addEventListener("keydown", function(e) {
 		if (e.key === "Enter" && !e.shiftKey) {
@@ -1294,7 +1310,7 @@ if (isTouchDevice) {
 
 /* ---------- Send a stored preset by name ---------- */
 async function sendPreset(name, group) {
-	setMsg("Sending ...", "");
+	setMsg("전송 중 ...", "");
 	try {
 		const r = await fetch("/send", {
 			method: "POST",
@@ -1302,9 +1318,9 @@ async function sendPreset(name, group) {
 			body: "name=" + encodeURIComponent(name) + "&group=" + encodeURIComponent(group || "")
 		});
 		if (!r.ok) { throw new Error(); }
-		setMsg('Preset "' + name + '" sent', "ok");
+		setMsg('프리셋 "' + name + '"을(를) 전송했습니다', "ok");
 	} catch (e) {
-		setMsg("Sending preset failed", "err");
+		setMsg("프리셋 전송 실패", "err");
 	}
 }
 
@@ -1355,7 +1371,7 @@ function createPresetRow(p) {
 	if (vis === "hidden") {
 		const tag = document.createElement("span");
 		tag.className = "hidden-tag";
-		tag.textContent = "hidden";
+		tag.textContent = "숨김";
 		valWrap.appendChild(tag);
 	} else if (vis === "mask") {
 		const valEl = document.createElement("span");
@@ -1364,12 +1380,12 @@ function createPresetRow(p) {
 		let shown = false;
 		const toggle = document.createElement("span");
 		toggle.className = "toggle";
-		toggle.textContent = "show";
+		toggle.textContent = "표시";
 		toggle.addEventListener("click", function() {
 			shown = !shown;
 			valEl.textContent = shown ? shorten(p.value || "") : "••••••••";
 			valEl.title = shown ? (p.value || "") : "";
-			toggle.textContent = shown ? "hide" : "show";
+			toggle.textContent = shown ? "가리기" : "표시";
 		});
 		valWrap.appendChild(valEl);
 		valWrap.appendChild(toggle);
@@ -1385,9 +1401,9 @@ function createPresetRow(p) {
 	actions.className = "preset-actions";
 
 	// Send + Edit share the same look; Delete is red to flag the destructive action.
-	const sendB = iconButton("send",  "Send",   "",       () => sendPreset(p.name, p.group));
-	const editB = iconButton("edit",  "Edit",   "",       () => openModal(p));
-	const delB  = iconButton("trash", "Delete", "danger", () => deletePreset(p.name, p.group));
+	const sendB = iconButton("send",  "전송", "",       () => sendPreset(p.name, p.group));
+	const editB = iconButton("edit",  "편집", "",       () => openModal(p));
+	const delB  = iconButton("trash", "삭제", "danger", () => deletePreset(p.name, p.group));
 
 	actions.appendChild(sendB);
 	actions.appendChild(editB);
@@ -1451,7 +1467,7 @@ function renderList(presets) {
 	plist.innerHTML = "";
 
 	if (!Array.isArray(presets) || presets.length === 0) {
-		plist.innerHTML = '<div class="small">No presets yet</div>';
+		plist.innerHTML = '<div class="small">아직 프리셋이 없습니다</div>';
 		return;
 	}
 
@@ -1489,19 +1505,19 @@ async function loadPresets() {
 		allPresets = Array.isArray(data) ? data : [];
 		renderList(allPresets);
 	} catch (e) {
-		setMsg("Failed to load presets", "err");
+		setMsg("프리셋을 불러오지 못했습니다", "err");
 	}
 }
 
 async function deletePreset(name, group) {
-	if (!confirm('Delete preset "' + name + '"?')) { return; }
+	if (!confirm('프리셋 "' + name + '"을(를) 삭제할까요?')) { return; }
 	try {
 		const r = await fetch("/presets?name=" + encodeURIComponent(name) + "&group=" + encodeURIComponent(group || ""), { method: "DELETE" });
 		if (!r.ok) { throw new Error(); }
 		await loadPresets();
-		setMsg("Delete successful", "ok");
+		setMsg("삭제했습니다", "ok");
 	} catch (e) {
-		setMsg("Delete failed", "err");
+		setMsg("삭제 실패", "err");
 	}
 }
 
@@ -1578,7 +1594,7 @@ function openModal(p) {
 	mGroup.value = p ? (p.group || "") : "";
 
 	if (editing) {
-		modalTitle.textContent = "Edit preset";
+		modalTitle.textContent = "프리셋 편집";
 		mName.value = p.name || "";
 		const vis = p.vis || "mask";
 		const radio = document.querySelector('input[name="vis"][value="' + vis + '"]');
@@ -1586,13 +1602,13 @@ function openModal(p) {
 
 		if (vis === "hidden") {
 			mValue.value = "";
-			mNote.textContent = "This preset is hidden — its value is not sent to the browser. Leave the value blank to keep it, or type a new value to replace it.";
+			mNote.textContent = "이 프리셋은 숨김 상태이므로 값이 브라우저로 전송되지 않습니다. 값을 비워 두면 기존 값이 유지되고, 새로 입력하면 교체됩니다.";
 		} else {
 			mValue.value = p.value || "";
 			mNote.textContent = "";
 		}
 	} else {
-		modalTitle.textContent = "New preset";
+		modalTitle.textContent = "새 프리셋";
 		mName.value = "";
 		mValue.value = "";
 		mNote.textContent = "";
@@ -1618,10 +1634,10 @@ async function saveModal() {
 
 	let bad = false;
 	if (!name) {
-		setFieldError(mName, nameErr, "required");
+		setFieldError(mName, nameErr, "필수 항목");
 		bad = true;
 	} else if (nameExistsInGroup(name, group)) {
-		setFieldError(mName, nameErr, "already exists in this group");
+		setFieldError(mName, nameErr, "이 그룹에 이미 있는 이름");
 		bad = true;
 	}
 
@@ -1629,12 +1645,12 @@ async function saveModal() {
 	// whose value is never loaded into the field, so a blank there means "keep".
 	const valueOptional = editing && editing.vis === "hidden";
 	if (!valueOptional && value.length === 0) {
-		setFieldError(mValue, valueErr, "required");
+		setFieldError(mValue, valueErr, "필수 항목");
 		bad = true;
 	}
 
 	if (bad) {
-		setMsg("Please fix the highlighted fields", "warn");
+		setMsg("표시된 항목을 수정해 주세요", "warn");
 		return;
 	}
 
@@ -1661,14 +1677,14 @@ async function saveModal() {
 		if (!r.ok) {
 			const t = await r.text();
 			// A server-side name clash also lights up the Name field.
-			if (/already exists/i.test(t)) { setFieldError(mName, nameErr, "already exists in this group"); }
-			throw new Error(t || "save failed");
+			if (/already exists|이미 있습니다/i.test(t)) { setFieldError(mName, nameErr, "이 그룹에 이미 있는 이름"); }
+			throw new Error(t || "저장 실패");
 		}
 		closeModal();
 		await loadPresets();
-		setMsg("Saving successful", "ok");
+		setMsg("저장했습니다", "ok");
 	} catch (e) {
-		setMsg("Saving failed" + (e && e.message ? " (" + e.message + ")" : ""), "err");
+		setMsg("저장 실패" + (e && e.message ? " (" + e.message + ")" : ""), "err");
 	} finally {
 		mSave.disabled = false;
 	}
@@ -1691,16 +1707,16 @@ function syncWifiMode() {
 
 function describeWifi(info) {
 	if (info.active === "sta") {
-		return 'Connected to "' + (info.ssid || "?") + '" at http://' + info.ip +
+		return '"' + (info.ssid || "?") + '"에 접속됨 - http://' + info.ip +
 			(typeof info.rssi === "number" ? " (" + info.rssi + " dBm)" : "");
 	}
 	if (info.active === "ap") {
 		const clients = info.clients || 0;
-		return 'Access point "' + (info.ssid || "?") + '" at http://' + info.ip + " - " +
-			clients + (clients === 1 ? " client" : " clients") +
-			(info.mode === "auto" ? " (fallback: the saved network did not connect)" : "");
+		return '액세스 포인트 "' + (info.ssid || "?") + '" - http://' + info.ip +
+			" - 접속 기기 " + clients + "대" +
+			(info.mode === "auto" ? " (대체 모드: 저장된 네트워크에 접속하지 못했습니다)" : "");
 	}
-	return "The radio is down.";
+	return "무선 기능이 꺼져 있습니다.";
 }
 
 async function loadWifi() {
@@ -1717,7 +1733,7 @@ async function loadWifi() {
 		syncWifiMode();
 		wifiNow.textContent = describeWifi(info);
 	} catch (e) {
-		wifiNow.textContent = "Could not read the Wi-Fi settings.";
+		wifiNow.textContent = "Wi-Fi 설정을 읽을 수 없습니다.";
 	}
 }
 
@@ -1727,14 +1743,14 @@ function renderWifiNetworks(nets) {
 	nets.forEach(net => {
 		const option = document.createElement("option");
 		option.value = net.ssid;
-		option.label = net.rssi + " dBm" + (net.open ? " - open" : "");
+		option.label = net.rssi + " dBm" + (net.open ? " - 개방형" : "");
 		wifiNets.appendChild(option);
 	});
 }
 
 async function scanWifiNetworks() {
 	wifiScanBtn.disabled = true;
-	setMsg("Scanning for networks \u2026");
+	setMsg("네트워크를 스캔하는 중 \u2026");
 
 	try {
 		await postForm("/wifi/scan", {});
@@ -1749,20 +1765,20 @@ async function scanWifiNetworks() {
 				const nets = result.nets || [];
 				renderWifiNetworks(nets);
 				wifiScanHint.textContent = nets.length
-					? nets.length + " networks found - open the Network field to pick one."
-					: "No networks found.";
-				setMsg("Scan complete", "ok");
+					? "네트워크 " + nets.length + "개를 찾았습니다 - 네트워크 항목을 열어 선택하세요."
+					: "찾은 네트워크가 없습니다.";
+				setMsg("스캔 완료", "ok");
 				return;
 			}
 
 			if (result.state === "idle") {
-				throw new Error("The scan did not start");
+				throw new Error("스캔이 시작되지 않았습니다");
 			}
 		}
 
-		throw new Error("The scan timed out");
+		throw new Error("스캔 시간이 초과되었습니다");
 	} catch (e) {
-		setMsg(e.message || "The scan failed", "err");
+		setMsg(e.message || "스캔에 실패했습니다", "err");
 	} finally {
 		wifiScanBtn.disabled = false;
 	}
@@ -1780,12 +1796,12 @@ async function saveWifiSettings() {
 	const minPass = wifiSaved.ap_min_pass || 8;
 
 	if (mode === "auto" && !ssid) {
-		setFieldError(wifiSsid, wifiSsidErr, "required in auto mode");
+		setFieldError(wifiSsid, wifiSsidErr, "자동 모드에서는 필수");
 		return;
 	}
 
 	if (apPass && apPass.length < minPass) {
-		setFieldError(wifiApPass, wifiApPassErr, "at least " + minPass + " characters");
+		setFieldError(wifiApPass, wifiApPassErr, "최소 " + minPass + "자 이상");
 		return;
 	}
 
@@ -1800,7 +1816,7 @@ async function saveWifiSettings() {
 	if (apPass) { fields.ap_pass = apPass; }
 
 	wifiSaveBtn.disabled = true;
-	setMsg("Saving \u2026");
+	setMsg("저장하는 중 \u2026");
 
 	try {
 		await postForm("/wifi", fields);
@@ -1808,12 +1824,12 @@ async function saveWifiSettings() {
 		wifiPass.value   = "";
 		wifiApPass.value = "";
 
-		setMsg("Saved - the device is rebooting", "ok");
+		setMsg("저장했습니다 - 장치가 재부팅됩니다", "ok");
 		wifiNow.textContent = mode === "ap"
-			? "Rebooting into access point mode. Connect to the device's own network, then open http://192.168.4.1."
-			: 'Rebooting. Reconnect to "' + ssid + '", then open the device\'s address again.';
+			? "액세스 포인트 모드로 재부팅합니다. 장치 자체 네트워크에 접속한 뒤 http://192.168.4.1을 여세요."
+			: '재부팅합니다. "' + ssid + '"에 다시 접속한 뒤 장치 주소를 다시 여세요.';
 	} catch (e) {
-		setMsg(e.message || "Could not save the Wi-Fi settings", "err");
+		setMsg(e.message || "Wi-Fi 설정을 저장할 수 없습니다", "err");
 	} finally {
 		wifiSaveBtn.disabled = false;
 	}

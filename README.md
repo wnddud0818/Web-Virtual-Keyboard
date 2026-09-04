@@ -1,70 +1,70 @@
 # Web Virtual Keyboard
 
-Web Virtual Keyboard turns a [LILYGO T-Dongle-S3](https://lilygo.cc/products/t-dongle-s3) into a Wi-Fi-controlled USB keyboard. From a browser on the local network, it can type free-form text, reusable presets, text files, or a checked text representation of any binary file into another computer.
+Web Virtual Keyboard는 [LILYGO T-Dongle-S3](https://lilygo.cc/products/t-dongle-s3)를 Wi-Fi로 제어하는 USB 키보드로 바꿔 줍니다. 같은 네트워크에 있는 브라우저에서 자유 입력 텍스트, 재사용 프리셋, 텍스트 파일, 그리고 검증값이 포함된 텍스트로 변환한 모든 바이너리 파일을 다른 컴퓨터에 타이핑할 수 있습니다.
 
-The normal firmware exposes **USB HID keyboard only**. It does not expose a USB serial, mass-storage, or network interface to the target computer. Diagnostic output remains available on the T-Dongle-S3's external UART connector.
+일반 펌웨어는 **USB HID 키보드만** 노출합니다. 대상 컴퓨터에 USB 시리얼, 대용량 저장장치, 네트워크 인터페이스로는 나타나지 않습니다. 진단 로그는 T-Dongle-S3의 외부 UART 커넥터에서 계속 확인할 수 있습니다.
 
-> **IMPORTANT - security**
+> **중요 - 보안**
 >
-> - **All text and file chunks travel over the local network in plaintext.** The web UI is protected only by HTTP Basic authentication (`MASTER_USER` / `MASTER_PASS`), not by TLS.
-> - **Use this device only on trusted local networks and computers you own or are authorised to operate.** Anything sent to the device becomes keyboard input on the focused target application.
-> - Preset values marked *Hidden* are never returned to the browser, but they are still stored in plaintext in the device's flash.
-> - **The built-in access point is a way onto the target computer's keyboard.** It is always WPA2-protected and an open access point is refused, but treat its password like the administrator password: anyone in radio range who has it can type on the target. The default password is generated per device on the first boot and shown on the display.
+> - **모든 텍스트와 파일 청크는 로컬 네트워크를 평문으로 지나갑니다.** 웹 UI는 TLS가 아니라 HTTP Basic 인증(`MASTER_USER` / `MASTER_PASS`)으로만 보호됩니다.
+> - **신뢰할 수 있는 로컬 네트워크, 그리고 본인 소유이거나 조작 권한이 있는 컴퓨터에서만 사용하세요.** 장치로 보낸 내용은 그대로 대상 컴퓨터에서 포커스된 애플리케이션의 키보드 입력이 됩니다.
+> - *숨김*으로 표시한 프리셋 값은 브라우저로 절대 반환되지 않지만, 장치 플래시에는 여전히 평문으로 저장됩니다.
+> - **내장 액세스 포인트는 대상 컴퓨터의 키보드로 들어가는 통로입니다.** 항상 WPA2로 보호되며 개방형 AP는 거부되지만, AP 비밀번호는 관리자 비밀번호처럼 다루세요. 전파가 닿는 범위에서 비밀번호를 아는 사람은 누구나 대상 컴퓨터에 타이핑할 수 있습니다. 기본 비밀번호는 첫 부팅 때 장치마다 따로 생성되어 화면에 표시됩니다.
 
-## Architecture
+## 구조
 
 ```text
-Controller browser                 T-Dongle-S3                    Target computer
-file / text / presets  --Wi-Fi-->  bounded chunk buffer  --USB--> focused editor or Chrome
-CRC32 + SHA-256                    native HID keyboard            offline decoder.html
+제어용 브라우저                     T-Dongle-S3                     대상 컴퓨터
+파일 / 텍스트 / 프리셋  --Wi-Fi-->  크기 제한 청크 버퍼  --USB-->  포커스된 편집기 또는 Chrome
+CRC32 + SHA-256                     네이티브 HID 키보드             오프라인 decoder.html
 ```
 
-File encoding and checksums are calculated in the controller browser. Chunks are sent sequentially, and the dongle keeps only the currently queued chunk in RAM while its non-blocking typing engine emits one key at a time. The total file is never stored in the dongle's RAM, flash, or TF card.
+파일 인코딩과 검증값은 제어용 브라우저에서 계산합니다. 청크는 순차적으로 전송되고, 동글은 현재 큐에 들어 있는 청크만 RAM에 보관하면서 논블로킹 타이핑 엔진으로 키를 하나씩 내보냅니다. 파일 전체가 동글의 RAM, 플래시, TF 카드에 저장되는 일은 없습니다.
 
-The included board definition targets the original **T-Dongle-S3 with 16 MB QSPI flash and no PSRAM**. T-Display-S3 is a different board. Other ESP32-S3 boards need an appropriate PlatformIO board definition and matching display/UART pins.
+포함된 보드 정의는 **16 MB QSPI 플래시에 PSRAM이 없는 오리지널 T-Dongle-S3**를 대상으로 합니다. T-Display-S3는 다른 보드입니다. 다른 ESP32-S3 보드를 쓰려면 그에 맞는 PlatformIO 보드 정의와 디스플레이/UART 핀 설정이 필요합니다.
 
-## Features
+## 기능
 
-- **Free-text typing** - enter text in the textarea and send it. `Enter` sends, `Shift+Enter` inserts a newline; an optional trailing CRLF can be added. US-ASCII only: HID types keycodes, not characters, so non-ASCII text is rejected before it reaches the device.
-- **Chunked file typing** - choose Auto, Raw text, or WVK1/Base64 mode, set the source-byte chunk size and per-key delay, and follow progress in the browser.
-- **WVK1 text transfer** - paste any UTF-8 text, including Korean and other non-ASCII scripts, and send it through the WVK1 envelope. Only Base64 is ever typed, so the decoder reproduces the original characters exactly. See [Sending non-ASCII text](#sending-non-ascii-text).
-- **Offline decoder** - the firmware serves a self-contained `decoder.html`, and can type its source into an offline target computer during first-time setup. No compiler, Python, PowerShell, or external JavaScript library is required on the target. Anything that decodes to valid UTF-8 text is displayed in the decoder rather than downloaded.
-- **Presets** - save reusable snippets and send them with one click.
-    - **Groups** - organise presets into collapsible groups. A name must be unique within a group but may repeat across different groups.
-    - **Per-preset visibility**:
-        - *Plaintext* - value is shown in the UI.
-        - *Masked* - value is shown as `••••`.
-        - *Hidden* - value never leaves the device; it is typed straight from flash and never sent to the browser.
-    - **Special keys / chords** - preset values can embed `<TOKEN>` keys that plain text cannot produce. A visual special-key builder inserts them for you.
-- **Two network modes** - **Auto** joins the saved network and falls back to the device's own access point when it cannot; **Access point only** always runs the device's own network. The mode, the network credentials, and the access point name/password are set from the web UI and stored on the device, so changing networks no longer means rebuilding the firmware.
-- **On-device status** - the display and external UART log show the SSID and IP address in station mode, or the access point's name and password when the access point is up. The web footer shows firmware and storage-layout versions from `/info`.
+- **자유 텍스트 타이핑** - 텍스트 영역에 입력하고 전송합니다. `Enter`로 전송하고 `Shift+Enter`로 줄바꿈을 넣으며, 끝에 CRLF를 덧붙이는 옵션도 있습니다. US-ASCII만 지원합니다. HID는 문자가 아니라 키코드를 타이핑하므로, ASCII가 아닌 텍스트는 장치에 도달하기 전에 거부됩니다.
+- **청크 단위 파일 타이핑** - 자동, 원문 텍스트, WVK1/Base64 중에서 모드를 고르고 원본 바이트 기준 청크 크기와 키 간격을 설정한 뒤, 브라우저에서 진행률을 확인합니다.
+- **WVK1 텍스트 전송** - 한글을 비롯한 ASCII 외 문자가 섞인 UTF-8 텍스트를 붙여 넣어 WVK1 봉투에 담아 보냅니다. 실제로 타이핑되는 것은 Base64뿐이므로 디코더가 원본 문자를 정확히 복원합니다. [ASCII 외 텍스트 보내기](#ascii-외-텍스트-보내기)를 참고하세요.
+- **오프라인 디코더** - 펌웨어가 자체 완결형 `decoder.html`을 제공하며, 최초 설정 시 그 소스를 오프라인 대상 컴퓨터에 직접 타이핑해 줄 수도 있습니다. 대상 컴퓨터에 컴파일러, Python, PowerShell, 외부 JavaScript 라이브러리가 필요하지 않습니다. 디코딩 결과가 올바른 UTF-8 텍스트이면 내려받지 않고 디코더 화면에 바로 표시합니다.
+- **프리셋** - 자주 쓰는 문구를 저장하고 클릭 한 번으로 보냅니다.
+    - **그룹** - 프리셋을 접을 수 있는 그룹으로 정리합니다. 이름은 같은 그룹 안에서 유일해야 하지만, 다른 그룹끼리는 겹칠 수 있습니다.
+    - **프리셋별 표시 방식**:
+        - *평문* - 값이 UI에 그대로 보입니다.
+        - *마스킹* - 값이 `••••`로 보입니다.
+        - *숨김* - 값이 장치를 벗어나지 않습니다. 플래시에서 곧바로 타이핑되고 브라우저로는 전송되지 않습니다.
+    - **특수 키 / 조합** - 프리셋 값에는 일반 텍스트로 만들 수 없는 `<TOKEN>` 키를 넣을 수 있습니다. 시각적인 특수 키 빌더가 대신 삽입해 줍니다.
+- **두 가지 네트워크 모드** - **자동**은 저장된 네트워크에 접속하고 실패하면 장치 자체 액세스 포인트로 전환합니다. **액세스 포인트 전용**은 항상 장치 자체 네트워크만 운영합니다. 모드, 네트워크 자격 증명, AP 이름/비밀번호를 웹 UI에서 설정해 장치에 저장하므로, 네트워크를 바꿀 때 펌웨어를 다시 빌드할 필요가 없습니다.
+- **장치 화면 상태 표시** - 스테이션 모드에서는 디스플레이와 외부 UART 로그에 SSID와 IP 주소가, 액세스 포인트가 켜져 있을 때는 AP 이름과 비밀번호가 표시됩니다. 웹 페이지 하단에는 `/info`에서 읽은 펌웨어 버전과 저장 레이아웃 버전이 표시됩니다.
 
-## Target-computer prerequisites
+## 대상 컴퓨터 준비 사항
 
-Before typing text or files, prepare the target computer:
+텍스트나 파일을 타이핑하기 전에 대상 컴퓨터를 준비하세요.
 
-1. Select the **English (US)** keyboard layout.
-2. Turn the IME/input method off and make sure **Caps Lock is off**. The typed WVK1 stream and Base64 payload are case-sensitive.
-3. Focus an empty plain-text editor for Raw mode, or the data textarea in `decoder.html` for WVK1 mode.
-4. Keep that window focused and do not use the target keyboard until the transfer finishes.
+1. 키보드 레이아웃을 **영어(미국)**로 선택합니다.
+2. IME/입력기를 끄고 **Caps Lock이 꺼져 있는지** 확인합니다. 타이핑되는 WVK1 스트림과 Base64 페이로드는 대소문자를 구분합니다.
+3. 원문 모드라면 비어 있는 일반 텍스트 편집기를, WVK1 모드라면 `decoder.html`의 데이터 입력창을 포커스합니다.
+4. 전송이 끝날 때까지 그 창의 포커스를 유지하고 대상 컴퓨터의 키보드를 건드리지 마세요.
 
-For source-code files, use a plain editor or disable automatic indentation. An editor that inserts its own indentation after Enter can add extra tabs or spaces on top of the characters being typed.
+소스 코드 파일이라면 일반 편집기를 쓰거나 자동 들여쓰기를 끄세요. Enter 뒤에 자체 들여쓰기를 넣는 편집기는 타이핑되는 문자 위에 탭이나 공백을 덧붙일 수 있습니다.
 
-## File-transfer modes
+## 파일 전송 모드
 
-### Auto
+### 자동
 
-Auto selects **Raw text** only when every source byte is printable US-ASCII or a tab/CR/LF character. If any other byte is present, including UTF-8 text, it selects **WVK1/Base64**. The selected mode is shown before transfer starts.
+자동 모드는 원본의 모든 바이트가 출력 가능한 US-ASCII 또는 탭/CR/LF일 때만 **원문 텍스트**를 선택합니다. 그 밖의 바이트가 하나라도 있으면 UTF-8 텍스트를 포함해 **WVK1/Base64**를 선택합니다. 선택된 모드는 전송이 시작되기 전에 화면에 표시됩니다.
 
-### Raw text
+### 원문 텍스트
 
-Raw mode types the original ASCII bytes directly. CRLF and lone CR line endings are normalised to Enter, and tabs are sent as Tab keypresses.
+원문 모드는 원본 ASCII 바이트를 그대로 타이핑합니다. CRLF와 단독 CR 줄바꿈은 Enter로 정규화되고, 탭은 Tab 키 입력으로 전송됩니다.
 
-Use it for ASCII-only `.txt`, `.c`, `.cpp`, `.h`, `.py`, `.html`, `.css`, `.json`, and similar files when the target editor is ready to save the result. Raw mode has no checksum envelope: a focus change, dropped keystroke, cancellation, or partial transfer requires clearing the target document and starting again.
+대상 편집기에서 결과를 저장할 준비가 되어 있고 ASCII만 들어 있는 `.txt`, `.c`, `.cpp`, `.h`, `.py`, `.html`, `.css`, `.json` 같은 파일에 사용하세요. 원문 모드에는 검증 봉투가 없습니다. 포커스 이동, 키 입력 누락, 취소, 부분 전송이 발생하면 대상 문서를 지우고 처음부터 다시 해야 합니다.
 
 ### WVK1 / Base64
 
-WVK1 works with text or binary files. The browser divides the original bytes into chunks, Base64-encodes each chunk, calculates a CRC32 for each original chunk, and calculates SHA-256 for the complete original file. The dongle types a stream such as:
+WVK1은 텍스트 파일과 바이너리 파일 모두에 쓸 수 있습니다. 브라우저가 원본 바이트를 청크로 나누고, 각 청크를 Base64로 인코딩하고, 원본 청크마다 CRC32를 계산하고, 원본 파일 전체에 대한 SHA-256을 계산합니다. 동글은 다음과 같은 스트림을 타이핑합니다.
 
 ```text
 WVK1
@@ -73,196 +73,200 @@ SIZE=12345
 CHUNKS=3
 SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 
-C|000001|A1B2C3D4|<base64 for original chunk 1>
-C|000002|11223344|<base64 for original chunk 2>
-C|000003|55667788|<base64 for original chunk 3>
+C|000001|A1B2C3D4|<원본 청크 1의 base64>
+C|000002|11223344|<원본 청크 2의 base64>
+C|000003|55667788|<원본 청크 3의 base64>
 END
 ```
 
-Chunk numbers in the typed document are one-based. CRC32 is calculated over each decoded original-byte chunk, not over its Base64 characters. Filenames are reduced to a safe printable-ASCII basename before being placed in the header.
+타이핑되는 문서의 청크 번호는 1부터 시작합니다. CRC32는 Base64 문자열이 아니라 디코딩된 원본 바이트 청크를 대상으로 계산합니다. 파일 이름은 헤더에 들어가기 전에 안전한 출력 가능 ASCII 기본 이름으로 축약됩니다.
 
-The offline decoder checks the WVK1 header, chunk order and count, every chunk CRC32, declared file size, and the SHA-256 emitted by the normal sender before downloading the reconstructed Blob. It reports corruption instead of silently producing an unchecked file. It can also decode a plain Base64 string with a user-supplied filename, but that form has no WVK1 integrity metadata.
+오프라인 디코더는 WVK1 헤더, 청크 순서와 개수, 모든 청크의 CRC32, 선언된 파일 크기, 그리고 일반 송신 경로가 내보낸 SHA-256을 모두 확인한 뒤에 복원된 Blob을 내려받습니다. 검증되지 않은 파일을 조용히 만들어 내지 않고 손상 사실을 보고합니다. 사용자가 파일 이름을 직접 지정한 일반 Base64 문자열도 디코딩할 수 있지만, 그 형식에는 WVK1 무결성 정보가 없습니다.
 
-## Sending non-ASCII text
+## ASCII 외 텍스트 보내기
 
-USB HID transports keycodes, not characters, and the HID keycode table has no entry for Hangul or any other non-ASCII script. The free-text box and Raw mode therefore accept US-ASCII only.
+USB HID는 문자가 아니라 키코드를 전달하고, HID 키코드 표에는 한글이나 그 밖의 ASCII 외 문자에 해당하는 항목이 없습니다. 그래서 자유 텍스트 입력창과 원문 모드는 US-ASCII만 받습니다.
 
-WVK1 sidesteps this entirely, because the characters themselves are never typed:
+WVK1은 문자 자체를 타이핑하지 않으므로 이 문제를 완전히 우회합니다.
 
-1. The browser encodes the text as UTF-8 bytes and Base64-encodes them.
-2. The dongle types only the Base64 envelope, which is pure US-ASCII.
-3. `decoder.html` verifies CRC32 and SHA-256, then rebuilds the original bytes.
+1. 브라우저가 텍스트를 UTF-8 바이트로 인코딩하고 Base64로 변환합니다.
+2. 동글은 순수 US-ASCII인 Base64 봉투만 타이핑합니다.
+3. `decoder.html`이 CRC32와 SHA-256을 검증하고 원본 바이트를 복원합니다.
 
-To send text this way, paste it into **Or send text as WVK1** in the transfer card and press **Send text as WVK1**. It is always sent as WVK1 regardless of the Transfer mode setting, and arrives as `message.txt`.
+이 방식으로 텍스트를 보내려면 전송 카드의 **텍스트를 WVK1로 보내기** 입력창에 붙여 넣고 **텍스트를 WVK1로 전송**을 누르세요. 전송 모드 설정과 무관하게 항상 WVK1로 전송되며, `message.txt`로 도착합니다.
 
-The decoder decides what to do with any verified payload by content, not by filename: if the bytes are valid UTF-8 with no NUL or stray control bytes, the original text is shown in **Decoded text** with **Copy text** and **Download as file** actions. Everything else downloads as before. A truncated multi-byte character fails the strict UTF-8 check, so a half-received transfer is reported as binary instead of being shown as mojibake.
+디코더는 검증된 페이로드의 처리 방식을 파일 이름이 아니라 내용으로 결정합니다. NUL이나 엉뚱한 제어 바이트가 없는 올바른 UTF-8이면 원본 텍스트를 **디코딩된 텍스트**에 표시하고 **텍스트 복사**, **파일로 저장** 동작을 제공합니다. 그 밖의 경우에는 예전처럼 파일로 내려받습니다. 잘린 멀티바이트 문자는 엄격한 UTF-8 검사에서 실패하므로, 절반만 받은 전송은 깨진 글자로 표시되는 대신 바이너리로 보고됩니다.
 
-Two limits remain:
+남아 있는 제약은 두 가지입니다.
 
-- **Filenames are still ASCII.** The `NAME` header is reduced to printable ASCII, so `보고서.txt` is typed as `_____.txt`. The file contents are unaffected.
-- **Typing Korean directly into an application is not supported.** That would require driving the target's IME by sending 두벌식 jamo keys (`한` as `gks`) and toggling Han/English mode, and the device cannot observe the target's current IME state.
+- **파일 이름은 여전히 ASCII입니다.** `NAME` 헤더는 출력 가능 ASCII로 축약되므로 `보고서.txt`는 `_____.txt`로 타이핑됩니다. 파일 내용은 영향을 받지 않습니다.
+- **애플리케이션에 한글을 직접 타이핑하는 것은 지원하지 않습니다.** 그렇게 하려면 두벌식 자모 키(`한`을 `gks`로)를 보내고 한/영 모드를 전환하며 대상 컴퓨터의 IME를 조작해야 하는데, 장치는 대상 컴퓨터의 현재 IME 상태를 알 수 없습니다.
 
-## First-time `decoder.html` setup
+## `decoder.html` 최초 설정
 
-Use this workflow when the target computer has Chrome but cannot open the dongle's web page:
+대상 컴퓨터에 Chrome은 있지만 동글의 웹 페이지를 열 수 없을 때 이 순서를 사용하세요.
 
-1. On the target computer, open a new, empty document in a plain-text editor. Confirm US layout, IME off, Caps Lock off, and focus the document.
-2. On the controller browser, open the dongle UI and click **Type decoder source**.
-3. Wait until the transfer reports complete. Save the target document as exactly `decoder.html`. In Windows Notepad, choose **All files** if necessary so it does not become `decoder.html.txt`.
-4. Open the saved `decoder.html` in Chrome and focus its data box.
-5. Back on the controller, choose a file and send it in WVK1 mode.
-6. When typing finishes, use the decoder's validation/download action to reconstruct the original file.
+1. 대상 컴퓨터에서 일반 텍스트 편집기로 비어 있는 새 문서를 엽니다. 미국식 레이아웃, IME 끄기, Caps Lock 끄기를 확인하고 그 문서를 포커스합니다.
+2. 제어용 브라우저에서 동글 UI를 열고 **디코더 소스 타이핑**을 누릅니다.
+3. 전송 완료가 표시될 때까지 기다립니다. 대상 문서를 정확히 `decoder.html`이라는 이름으로 저장합니다. Windows 메모장에서는 `decoder.html.txt`가 되지 않도록 필요하면 **모든 파일**을 선택하세요.
+4. 저장한 `decoder.html`을 Chrome에서 열고 데이터 입력창을 포커스합니다.
+5. 제어용 브라우저로 돌아가 파일을 선택하고 WVK1 모드로 전송합니다.
+6. 타이핑이 끝나면 디코더의 검증/저장 동작으로 원본 파일을 복원합니다.
 
-If the target computer can reach the dongle over Wi-Fi, it may instead open `http://DEVICE_IP/decoder.html` directly and optionally save a local copy.
+대상 컴퓨터가 Wi-Fi로 동글에 접근할 수 있다면 `http://장치_IP/decoder.html`을 바로 열어도 되고, 원한다면 로컬에 복사해 두어도 됩니다.
 
-## Transfer reliability and speed
+## 전송 신뢰성과 속도
 
-- The default browser settings use 768 original bytes per chunk; the allowed range is 96-1536 bytes. A Base64 payload sent to the dongle is capped at 2048 characters. The key delay is configurable from 0-100 ms (5 ms by default).
-- The browser waits for the device's zero-based `next` counter before sending another chunk. Repeating an already accepted chunk is idempotent, so an uncertain HTTP response does not type that chunk twice. **Retry / Resume** recovers a paused controller-to-dongle session; Stop cancels the current typing job.
-- Progress means the dongle has emitted the HID key reports. A keyboard protocol has no per-character acknowledgement from the target editor, so it cannot prove that the focused application retained every character. WVK1 CRC/SHA validation happens afterwards on the target.
-- Base64 adds about 33% more typed characters. As a rough lower bound, 100 KiB takes about 4.6 minutes at 2 ms/key or 11.4 minutes at 5 ms/key; 1 MiB takes about 47 or 117 minutes respectively. HTTP and application overhead add more time. Larger chunks reduce request overhead but do not reduce the number of keystrokes.
-- If the decoder reports damage, clear its data box and resend. There is no reverse channel from `decoder.html` to request a damaged chunk automatically.
+- 브라우저 기본 설정은 청크당 원본 768바이트이며 허용 범위는 96-1536바이트입니다. 동글로 전송되는 Base64 페이로드는 2048자로 제한됩니다. 키 간격은 0-100 ms 범위에서 조절할 수 있고 기본값은 5 ms입니다.
+- 브라우저는 다음 청크를 보내기 전에 장치의 0부터 시작하는 `next` 카운터를 기다립니다. 이미 받아들인 청크를 다시 보내는 것은 멱등하므로, HTTP 응답이 불확실해도 같은 청크가 두 번 타이핑되지 않습니다. **재시도 / 이어서**는 멈춘 브라우저-동글 세션을 복구하고, 중지는 진행 중인 타이핑 작업을 취소합니다.
+- 진행률은 동글이 HID 키 리포트를 내보냈다는 뜻입니다. 키보드 프로토콜에는 대상 편집기로부터의 문자 단위 응답이 없으므로, 포커스된 애플리케이션이 모든 문자를 실제로 받았는지는 증명할 수 없습니다. WVK1의 CRC/SHA 검증은 그 뒤에 대상 컴퓨터에서 이루어집니다.
+- Base64는 타이핑할 문자를 약 33% 늘립니다. 대략적인 하한선으로, 100 KiB는 키당 2 ms에서 약 4.6분, 5 ms에서 약 11.4분이 걸리고, 1 MiB는 각각 약 47분과 117분이 걸립니다. HTTP와 애플리케이션 오버헤드가 여기에 더해집니다. 청크를 크게 하면 요청 오버헤드는 줄지만 키 입력 횟수는 줄지 않습니다.
+- 디코더가 손상을 보고하면 데이터 입력창을 비우고 다시 보내세요. `decoder.html`에서 손상된 청크를 자동으로 다시 요청하는 역방향 채널은 없습니다.
 
-## HTTP endpoints
+## HTTP 엔드포인트
 
-All functional endpoints require the same HTTP Basic authentication as the web UI.
+모든 기능 엔드포인트는 웹 UI와 동일한 HTTP Basic 인증을 요구합니다.
 
-| Method | Endpoint | Purpose |
+| 메서드 | 엔드포인트 | 용도 |
 | --- | --- | --- |
-| `GET` | `/` | Main controller UI |
-| `GET` | `/decoder`, `/decoder.html` | Self-contained offline decoder source |
-| `POST` | `/transfer/start` | Start a Raw or WVK1 session and return its transfer ID |
-| `POST` | `/transfer/chunk` | Queue the next indexed chunk; duplicate completed indexes are acknowledged without retyping |
-| `GET` | `/transfer/status` | Return state, next expected index, progress, limits, and errors |
-| `POST` | `/transfer/cancel`, `/transfer/stop` | Cancel the active typing session |
-| `POST` | `/type`, `/send` | Type free-form text or a stored preset |
-| `GET/POST/DELETE` | `/presets` | Read, save, or remove presets |
-| `GET` | `/info` | Firmware and storage-layout versions |
-| `GET/POST` | `/wifi` | Read the network mode and current link, or save new settings and reboot |
-| `POST` | `/wifi/scan` | Start an asynchronous scan for nearby networks |
-| `GET` | `/wifi/scan` | Poll the scan: `idle`, `running`, or `done` with the network list |
+| `GET` | `/` | 메인 컨트롤러 UI |
+| `GET` | `/decoder`, `/decoder.html` | 자체 완결형 오프라인 디코더 소스 |
+| `POST` | `/transfer/start` | 원문 또는 WVK1 세션을 시작하고 전송 ID 반환 |
+| `POST` | `/transfer/chunk` | 다음 순번 청크를 큐에 넣음. 이미 완료된 순번은 다시 타이핑하지 않고 확인 응답 |
+| `GET` | `/transfer/status` | 상태, 다음에 기대하는 순번, 진행률, 제한값, 오류 반환 |
+| `POST` | `/transfer/cancel`, `/transfer/stop` | 진행 중인 타이핑 세션 취소 |
+| `POST` | `/type`, `/send` | 자유 텍스트 또는 저장된 프리셋 타이핑 |
+| `GET/POST/DELETE` | `/presets` | 프리셋 조회, 저장, 삭제 |
+| `GET` | `/info` | 펌웨어 버전과 저장 레이아웃 버전 |
+| `GET/POST` | `/wifi` | 네트워크 모드와 현재 연결 상태 조회, 또는 새 설정 저장 후 재부팅 |
+| `POST` | `/wifi/scan` | 주변 네트워크 비동기 스캔 시작 |
+| `GET` | `/wifi/scan` | 스캔 결과 폴링: `idle`, `running`, 또는 네트워크 목록과 함께 `done` |
 
-## Special keys (tokens)
+## 특수 키(토큰)
 
-Inside a **preset value**, wrap a key name in `< >` to send a raw key instead of literal text. Token names are case-insensitive.
+**프리셋 값** 안에서 키 이름을 `< >`로 감싸면 리터럴 텍스트 대신 원시 키를 보냅니다. 토큰 이름은 대소문자를 구분하지 않습니다.
 
-Special keys use a **chord model**: each `<TOKEN>` is pressed and held as it is read, and the next typed character (if any) is pressed together with all held keys, then the whole chord is released at once. A token with no following character is pressed and released on its own.
+특수 키는 **조합(chord) 모델**을 사용합니다. 각 `<TOKEN>`은 읽히는 순간 눌린 상태로 유지되고, 바로 다음에 오는 문자가 있으면 눌려 있는 모든 키와 함께 눌린 뒤 조합 전체가 한꺼번에 떼어집니다. 뒤에 문자가 없는 토큰은 단독으로 눌렀다 떼어집니다.
 
-| Preset value | Result |
+| 프리셋 값 | 결과 |
 | --- | --- |
 | `<CTRL>c` | Ctrl + C |
-| `<CTRL><ALT><DEL>` | Ctrl + Alt + Del (pressed together) |
-| `<WIN>r` | Win + R (Run dialog) |
-| `<F5>` | F5 on its own |
-| `password<ENTER>` | types `password`, then Enter |
+| `<CTRL><ALT><DEL>` | Ctrl + Alt + Del (동시에 누름) |
+| `<WIN>r` | Win + R (실행 대화상자) |
+| `<F5>` | F5 단독 |
+| `password<ENTER>` | `password`를 타이핑한 뒤 Enter |
 
-Supported tokens:
+지원하는 토큰:
 
-- **Modifiers:** `CTRL` / `CONTROL`, `SHIFT`, `ALT`, `WIN` / `GUI` / `WINDOWS` / `META`
-- **Editing / whitespace:** `ENTER` / `RETURN`, `ESC` / `ESCAPE`, `BKSP` / `BACKSPACE` / `BS`, `TAB`, `SPACE` / `SPC`
-- **Locks / system:** `CAPS` / `CAPSLOCK`, `PRTSC` / `PRINTSCREEN` / `PRTSCR`, `SCRLK` / `SCROLLLOCK`, `PAUSE` / `BREAK`, `NUMLK` / `NUMLOCK`, `MENU` / `APP` / `APPLICATION`
-- **Navigation:** `INS` / `INSERT`, `HOME`, `PGUP` / `PAGEUP`, `DEL` / `DELETE`, `END`, `PGDN` / `PAGEDOWN`, `LEFT`, `RIGHT`, `UP`, `DOWN`
-- **Function keys:** `F1`-`F12`
+- **수정 키:** `CTRL` / `CONTROL`, `SHIFT`, `ALT`, `WIN` / `GUI` / `WINDOWS` / `META`
+- **편집 / 공백:** `ENTER` / `RETURN`, `ESC` / `ESCAPE`, `BKSP` / `BACKSPACE` / `BS`, `TAB`, `SPACE` / `SPC`
+- **잠금 / 시스템:** `CAPS` / `CAPSLOCK`, `PRTSC` / `PRINTSCREEN` / `PRTSCR`, `SCRLK` / `SCROLLLOCK`, `PAUSE` / `BREAK`, `NUMLK` / `NUMLOCK`, `MENU` / `APP` / `APPLICATION`
+- **탐색:** `INS` / `INSERT`, `HOME`, `PGUP` / `PAGEUP`, `DEL` / `DELETE`, `END`, `PGDN` / `PAGEDOWN`, `LEFT`, `RIGHT`, `UP`, `DOWN`
+- **기능 키:** `F1`-`F12`
 
-> Tokens are only parsed for **presets**. The quick *Type text* box sends everything literally, so `<CTRL>` there types the characters `<CTRL>`.
+> 토큰은 **프리셋에서만** 해석됩니다. 빠른 *텍스트 타이핑* 입력창은 모든 것을 리터럴로 보내므로, 거기에 `<CTRL>`을 넣으면 `<CTRL>`이라는 문자가 그대로 타이핑됩니다.
 
-## Network modes
+## 네트워크 모드
 
-The mode and credentials live in the device's own NVS namespace, so they survive a reboot, a different host computer, and a firmware update. `WIFI_SSID` / `WIFI_PASS` in `include/config.h` are only the factory defaults that seed them on the very first boot.
+모드와 자격 증명은 장치 자체의 NVS 네임스페이스에 저장되므로 재부팅, 다른 호스트 컴퓨터, 펌웨어 업데이트를 모두 견딥니다. `include/config.h`의 `WIFI_SSID` / `WIFI_PASS`는 맨 처음 부팅 때 초기값을 채워 주는 공장 기본값일 뿐입니다.
 
-| Mode | Behaviour |
+| 모드 | 동작 |
 | --- | --- |
-| **Auto** (default) | Joins the saved network. If it does not connect within `WIFI_STA_TIMEOUT_MS`, the access point comes up instead so the device is still reachable. |
-| **Access point only** | Never touches the station side. The device always runs its own network, which is what a target computer with no router needs. |
+| **자동** (기본값) | 저장된 네트워크에 접속합니다. `WIFI_STA_TIMEOUT_MS` 안에 연결되지 않으면 액세스 포인트를 대신 띄워 장치에 계속 접근할 수 있게 합니다. |
+| **액세스 포인트 전용** | 스테이션 쪽을 아예 건드리지 않습니다. 장치가 항상 자체 네트워크를 운영하며, 공유기가 없는 대상 컴퓨터에 필요한 방식입니다. |
 
-Change either from the **Wi-Fi** card in the web UI: pick the mode, optionally **Scan** for nearby networks, then *Save & reboot*. Passwords left blank keep the stored ones, so the UI never has to echo a secret back to the browser.
+웹 UI의 **Wi-Fi** 카드에서 둘 중 하나로 바꿀 수 있습니다. 모드를 고르고, 필요하면 **스캔**으로 주변 네트워크를 찾은 뒤 *저장 후 재부팅*을 누르세요. 비밀번호를 비워 두면 저장된 값이 유지되므로, UI가 비밀 값을 브라우저로 되돌려 보낼 일이 없습니다.
 
-### Reaching the access point
+### 액세스 포인트에 접속하기
 
-The access point is named `WVK-XXXX` (the last two bytes of the device MAC) and serves the same UI at `http://192.168.4.1`. Its password is generated per device on the first boot and shown on the display next to `AP pass`; set your own from the web UI, or pin one at build time with `AP_PASS_DEFAULT` in `include/config.h` (required for a build with `ENABLE_DISPLAY false`, which has no way to show a generated one).
+액세스 포인트 이름은 `WVK-XXXX`(장치 MAC의 마지막 두 바이트)이며 `http://192.168.4.1`에서 같은 UI를 제공합니다. 비밀번호는 첫 부팅 때 장치마다 생성되어 화면의 `AP pass` 옆에 표시됩니다. 웹 UI에서 직접 지정할 수도 있고, `include/config.h`의 `AP_PASS_DEFAULT`로 빌드 시점에 고정할 수도 있습니다(생성된 비밀번호를 보여 줄 방법이 없는 `ENABLE_DISPLAY false` 빌드에서는 필수입니다).
 
-While attached to the access point, the controller phone or computer has no internet over that interface. That is why **Auto** is the better everyday mode and **Access point only** is for the router-less case.
+액세스 포인트에 붙어 있는 동안에는 제어용 휴대폰이나 컴퓨터가 그 인터페이스로 인터넷을 쓸 수 없습니다. 그래서 평소에는 **자동**이 더 좋은 모드이고, **액세스 포인트 전용**은 공유기가 없는 경우를 위한 것입니다.
 
-### If the device is unreachable
+### 장치에 접근할 수 없을 때
 
-Hold the **BOOT** button for 3 seconds *while the firmware is running*. The station link is dropped, the access point comes up immediately, and the display shows its name and password. BOOT cannot be held from power-on for this - that selects the ROM bootloader - so plug the device in first, then press and hold.
+*펌웨어가 실행되고 있는 상태에서* **BOOT** 버튼을 3초간 누르고 있으세요. 스테이션 연결이 끊기고 액세스 포인트가 즉시 올라오며, 화면에 이름과 비밀번호가 표시됩니다. 전원을 넣는 순간부터 BOOT를 누르고 있으면 ROM 부트로더가 선택되므로 이 방법으로는 쓸 수 없습니다. 먼저 장치를 연결한 다음 누르고 있어야 합니다.
 
-A scan needs the station interface, so running one from the access point puts the radio into AP+STA for a moment and can stall connected clients. The scan is asynchronous and the UI polls for its result, which keeps the request from outliving the connection that made it.
+스캔에는 스테이션 인터페이스가 필요하므로, 액세스 포인트에서 스캔을 실행하면 잠시 라디오가 AP+STA 모드로 들어가 접속된 클라이언트가 멈출 수 있습니다. 스캔은 비동기로 수행되고 UI가 결과를 폴링하므로, 요청이 그 요청을 만든 연결보다 오래 살아남지 않습니다.
 
-## Hardware requirements
+## 하드웨어 요구 사항
 
-- LILYGO T-Dongle-S3, or another ESP32-S3 board configured for native USB device mode
-- A controller phone/computer with a browser on the dongle's Wi-Fi network
-- A target computer that receives USB keystrokes
-- Chrome or another modern browser on the target for WVK1 decoding
-- Optional external USB-UART adapter for logs
+- LILYGO T-Dongle-S3, 또는 네이티브 USB 디바이스 모드로 설정한 다른 ESP32-S3 보드
+- 동글의 Wi-Fi 네트워크에 있는, 브라우저가 동작하는 제어용 휴대폰/컴퓨터
+- USB 키 입력을 받을 대상 컴퓨터
+- WVK1 디코딩을 위한 대상 컴퓨터의 Chrome 또는 최신 브라우저
+- (선택) 로그 확인용 외부 USB-UART 어댑터
 
-## Build and flash
+## 빌드와 플래시
 
-1. Install PlatformIO, then open `Web-Virtual-Keyboard-platformio` as the project directory.
-2. Edit `include/config.h` and set `MASTER_USER` and `MASTER_PASS`. `WIFI_SSID` / `WIFI_PASS` are optional here: they seed the saved settings on the first boot, and can be left alone if you intend to provision the network from the access point instead.
-3. Build from the repository root:
+1. PlatformIO를 설치하고 `Web-Virtual-Keyboard-platformio`를 프로젝트 디렉터리로 엽니다.
+2. `include/config.h`를 열어 `MASTER_USER`와 `MASTER_PASS`를 설정합니다. `WIFI_SSID` / `WIFI_PASS`는 선택 사항입니다. 첫 부팅 때 저장 설정의 초기값이 될 뿐이므로, 액세스 포인트에서 네트워크를 설정할 생각이라면 그대로 두어도 됩니다.
+3. 저장소 루트에서 빌드합니다.
 
    ```sh
    pio run -d Web-Virtual-Keyboard-platformio
    ```
 
-4. Put the dongle in download mode if necessary, then upload:
+4. 필요하면 동글을 다운로드 모드로 두고 업로드합니다.
 
    ```sh
    pio run -d Web-Virtual-Keyboard-platformio -t upload
    ```
 
-5. Reconnect the dongle to the target computer normally. Its display and external UART show the assigned IP address, or the access point's name and password when no network was joined. Open `http://DEVICE_IP` (or `http://192.168.4.1` over the access point) from the controller browser and sign in.
+5. 동글을 대상 컴퓨터에 평소처럼 다시 연결합니다. 디스플레이와 외부 UART에 할당된 IP 주소가, 접속한 네트워크가 없으면 액세스 포인트의 이름과 비밀번호가 표시됩니다. 제어용 브라우저에서 `http://장치_IP`(액세스 포인트라면 `http://192.168.4.1`)를 열고 로그인하세요.
 
-The build hook converts every `web/*.html` file into generated `src/html.cpp` and `include/html.h` PROGMEM assets. Those generated files are intentionally ignored by Git.
+빌드 훅이 모든 `web/*.html` 파일을 생성된 `src/html.cpp`와 `include/html.h`의 PROGMEM 자원으로 변환합니다. 생성된 이 파일들은 의도적으로 Git에서 무시됩니다.
 
-### Browser firmware installer
+> `web/*.html`을 수정하면 웹 UI가 펌웨어에 함께 컴파일되므로, 바뀐 화면을 보려면 다시 빌드해서 플래시해야 합니다. `docs/firmware/`의 배포용 이미지도 마찬가지로 다시 만들어야 최신 UI가 반영됩니다.
 
-`docs/index.html` installs the same release from desktop Chrome or Edge through Web Serial. It is a single dependency-free page that loads ESP Web Tools from a CDN, so it needs no build step. Every PlatformIO build runs `scripts/package_web_installer.py`, which merges the ESP32-S3 bootloader, partition table, boot application, and firmware into:
+> `web/decoder.html`은 **순수 US-ASCII로 유지해야 합니다.** 이 파일의 소스 자체를 HID 키보드로 타이핑해 대상 컴퓨터에 옮기는데, HID는 ASCII 키코드만 전달하기 때문입니다. 그래서 화면에 보이는 한글은 모두 파일 맨 위의 `T` 표에 `\uXXXX` 이스케이프로 들어 있습니다. 문구를 고칠 때는 그 표만 수정하고, 한글을 그대로 쓰지 말고 이스케이프로 변환해 넣으세요. `tests/decoder_protocol_test.mjs`가 파일 전체의 ASCII 여부를 검사합니다.
+
+### 브라우저 펌웨어 설치 도구
+
+`docs/index.html`은 데스크톱 Chrome 또는 Edge에서 Web Serial을 통해 같은 릴리스를 설치합니다. CDN에서 ESP Web Tools를 불러오는 의존성 없는 단일 페이지이므로 빌드 단계가 필요하지 않습니다. PlatformIO 빌드는 매번 `scripts/package_web_installer.py`를 실행해 ESP32-S3 부트로더, 파티션 테이블, 부트 애플리케이션, 펌웨어를 다음 파일로 병합합니다.
 
 ```text
 docs/firmware/web-virtual-keyboard.bin
 ```
 
-It also regenerates the ESP Web Tools `manifest.json` and a `release.json` containing the version, byte size, and SHA-256. The page reads `release.json` at runtime, so the displayed version is never hardcoded. Serve it locally with:
+또한 ESP Web Tools용 `manifest.json`과, 버전·바이트 크기·SHA-256이 담긴 `release.json`을 다시 생성합니다. 페이지는 실행 시점에 `release.json`을 읽으므로 표시되는 버전이 하드코딩되지 않습니다. 로컬에서 확인하려면 다음과 같이 실행하세요.
 
 ```sh
 cd docs
 python3 -m http.server 8777
 ```
 
-Open `http://localhost:8777` in desktop Chrome or Edge. Web Serial is restricted to secure contexts, so a deployed installer must use HTTPS — pointing GitHub Pages at `main /docs` satisfies this without extra hosting.
+데스크톱 Chrome 또는 Edge에서 `http://localhost:8777`을 엽니다. Web Serial은 보안 컨텍스트에서만 동작하므로 배포된 설치 페이지는 HTTPS를 써야 합니다. GitHub Pages를 `main /docs`로 지정하면 별도 호스팅 없이 이 조건이 충족됩니다.
 
-### Double-clickable single-file installer
+### 더블클릭으로 실행하는 단일 파일 설치 도구
 
-Web Serial also works from `file://`, but the browser blocks `fetch` of local files, so the page cannot read `firmware/manifest.json` from disk. `scripts/build_standalone_installer.py` works around this by embedding the manifest and the firmware into one HTML file and handing them to ESP Web Tools as blob URLs:
+Web Serial은 `file://`에서도 동작하지만 브라우저가 로컬 파일 `fetch`를 막기 때문에, 페이지가 디스크의 `firmware/manifest.json`을 읽을 수 없습니다. `scripts/build_standalone_installer.py`는 매니페스트와 펌웨어를 HTML 한 파일에 넣고 blob URL로 ESP Web Tools에 넘겨 이 문제를 우회합니다.
 
 ```sh
 python3 scripts/build_standalone_installer.py
 ```
 
-The result, `docs/wvk-flash-standalone.html` (~1.3 MB), can be opened by double-clicking it in Chrome or Edge — no server required. It is generated on demand and therefore ignored by Git; attach it to a GitHub Release when distributing. An internet connection is still needed because ESP Web Tools lazy-loads its install dialog from the CDN.
+결과물 `docs/wvk-flash-standalone.html`(약 1.3 MB)은 Chrome이나 Edge에서 더블클릭으로 열 수 있고 서버가 필요하지 않습니다. 필요할 때 생성하는 파일이므로 Git에서는 무시되며, 배포할 때는 GitHub Release에 첨부하세요. ESP Web Tools가 설치 대화상자를 CDN에서 지연 로드하므로 인터넷 연결은 여전히 필요합니다.
 
-> Do not publish a firmware image containing private administrator credentials to a public installer. `MASTER_USER` / `MASTER_PASS` are still compile-time values in `include/config.h`, so a public build hands everyone the same sign-in. Wi-Fi no longer has this problem: leave `WIFI_SSID` / `WIFI_PASS` at their placeholders and whoever installs the image provisions their own network over the access point.
+> 개인 관리자 자격 증명이 들어 있는 펌웨어 이미지를 공개 설치 페이지에 올리지 마세요. `MASTER_USER` / `MASTER_PASS`는 여전히 `include/config.h`의 컴파일 시점 값이므로, 공개 빌드는 모든 사람에게 같은 로그인 정보를 넘겨주는 셈입니다. Wi-Fi는 더 이상 이 문제가 없습니다. `WIFI_SSID` / `WIFI_PASS`를 자리표시자 그대로 두면 이미지를 설치한 사람이 액세스 포인트에서 자기 네트워크를 직접 설정합니다.
 
-### HID-only upload recovery
+### HID 전용 모드에서 업로드 복구하기
 
-The application uses native USB OTG in HID-only mode, so USB CDC is unavailable after normal startup. If PlatformIO cannot discover or upload to the device:
+애플리케이션은 네이티브 USB OTG를 HID 전용 모드로 사용하므로, 정상 부팅 후에는 USB CDC를 쓸 수 없습니다. PlatformIO가 장치를 찾지 못하거나 업로드하지 못할 때는 다음과 같이 하세요.
 
-1. Unplug the T-Dongle-S3.
-2. Hold its **BOOT** button while plugging it into the development computer.
-3. Release BOOT after the ROM download port appears, then run the upload command.
-4. When upload completes, unplug and reconnect without holding BOOT.
+1. T-Dongle-S3를 뽑습니다.
+2. **BOOT** 버튼을 누른 상태로 개발용 컴퓨터에 꽂습니다.
+3. ROM 다운로드 포트가 나타나면 BOOT를 놓고 업로드 명령을 실행합니다.
+4. 업로드가 끝나면 BOOT를 누르지 않은 상태로 뽑았다가 다시 꽂습니다.
 
-Bootloader/download mode may temporarily enumerate differently; the flashed application itself exposes only the HID keyboard interface.
+부트로더/다운로드 모드에서는 일시적으로 다르게 인식될 수 있습니다. 플래시된 애플리케이션 자체는 HID 키보드 인터페이스만 노출합니다.
 
-## Notes
+## 참고 사항
 
-- Presets are stored in ESP32 NVS. If `STORAGE_VERSION` changes, the firmware deliberately wipes and reinitialises incompatible preset data. A firmware-only version bump does not require changing the storage version.
-- The network settings deliberately live in a separate NVS namespace (`wifi`) from the presets (`cfg`). A `STORAGE_VERSION` bump wipes the preset namespace only, so a firmware update cannot strand the device on a network it can no longer be told about.
-- Saving from the **Wi-Fi** card reboots the device after answering the request, and is refused with `409` while a transfer or typing job is still running.
-- The firmware assumes US keyboard mapping. Unicode text should be transferred through WVK1 and reconstructed by `decoder.html`, not typed directly.
+- 프리셋은 ESP32 NVS에 저장됩니다. `STORAGE_VERSION`이 바뀌면 펌웨어가 호환되지 않는 프리셋 데이터를 의도적으로 지우고 다시 초기화합니다. 펌웨어 버전만 올리는 경우에는 저장 버전을 바꿀 필요가 없습니다.
+- 네트워크 설정은 프리셋(`cfg`)과 의도적으로 분리된 NVS 네임스페이스(`wifi`)에 저장됩니다. `STORAGE_VERSION`을 올리면 프리셋 네임스페이스만 지워지므로, 펌웨어 업데이트 때문에 장치가 더 이상 알려 줄 수 없는 네트워크에 갇히는 일이 없습니다.
+- **Wi-Fi** 카드에서 저장하면 요청에 응답한 뒤 장치가 재부팅합니다. 전송이나 타이핑 작업이 진행 중이면 `409`로 거부됩니다.
+- 펌웨어는 미국식 키보드 매핑을 전제합니다. 유니코드 텍스트는 직접 타이핑하지 말고 WVK1으로 전송해 `decoder.html`에서 복원해야 합니다.
 
 <img width="1913" height="901" alt="Snímka obrazovky 2026-07-18 193737" src="https://github.com/user-attachments/assets/b00a74c1-281e-4d7b-8bfa-7963000330d7" />
 <img width="1912" height="905" alt="Snímka obrazovky 2026-07-18 193820" src="https://github.com/user-attachments/assets/b4d9b5ee-2c45-49b2-99a7-318fe79e4955" />
