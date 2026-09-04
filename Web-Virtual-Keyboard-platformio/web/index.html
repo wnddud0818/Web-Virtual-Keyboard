@@ -67,7 +67,7 @@ h3 { margin: 0 0 4px; font-size: 20px; }
 .row + .row { margin-top: 10px; }
 
 /* Inputs & textarea share styling */
-input[type="text"], textarea {
+input[type="text"], input[type="number"], select, textarea {
 	padding: 10px 14px;
 	font-size: var(--fs-body);
 	color: var(--text);
@@ -80,7 +80,8 @@ input[type="text"], textarea {
 	width: 100%;
 }
 
-input[type="text"] { height: 48px; }
+input[type="text"], input[type="number"], select { height: 48px; }
+select { appearance: none; -webkit-appearance: none; cursor: pointer; }
 
 textarea {
 	min-height: 96px;
@@ -94,6 +95,8 @@ textarea {
 }
 
 input[type="text"]:focus, input[type="text"]:hover,
+input[type="number"]:focus, input[type="number"]:hover,
+select:focus, select:hover,
 textarea:focus, textarea:hover {
 	border-color: var(--accent-1);
 	box-shadow: 0 0 8px 2px rgba(255, 122, 24, .35);
@@ -144,6 +147,12 @@ button {
 button:hover { filter: brightness(1.15); box-shadow: 0 0 14px 4px rgba(255,122,24,.6); }
 button:active{ filter: brightness(1.05); }
 button:disabled{ opacity: .65; cursor: not-allowed; box-shadow: none; }
+
+.button-link {
+	height: 38px; padding: 0 14px; border-radius: 10px;
+	display: inline-flex; align-items: center; justify-content: center;
+	font-size: var(--fs-small); font-weight: 700; text-decoration: none;
+}
 
 .btn-sm { height: 38px; padding: 0 14px; border-radius: 10px; font-size: var(--fs-small); }
 
@@ -308,17 +317,86 @@ input.invalid, textarea.invalid {
 .modal-head h3 { margin: 0; }
 .modal-actions { display: flex; gap: 10px; flex: none; }
 
+/* ---------- File transfer ---------- */
+.transfer-card { overflow: hidden; }
+.transfer-head-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.transfer-grid {
+	display: grid;
+	grid-template-columns: minmax(260px, 1.4fr) minmax(280px, 1fr);
+	gap: 16px;
+	align-items: stretch;
+}
+.file-drop {
+	min-height: 148px;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	gap: 8px;
+	padding: 18px;
+	text-align: center;
+	background: var(--field);
+	border: 2px dashed var(--border);
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.file-drop:hover, .file-drop.drag {
+	border-color: var(--accent-1);
+	background: #19191b;
+	box-shadow: 0 0 10px 2px rgba(255, 122, 24, .25);
+}
+.file-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.file-drop strong { color: var(--accent-2); font-size: 17px; }
+.file-meta { max-width: 100%; word-break: break-word; }
+.transfer-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.transfer-options .wide { grid-column: 1 / -1; }
+.compact-field { min-width: 0; }
+.compact-field .field-label { margin-bottom: 6px; }
+.transfer-hint { margin-top: 12px; min-height: 20px; }
+.transfer-warning { color: var(--warn); }
+.transfer-status {
+	margin-top: 14px;
+	padding: 13px;
+	background: var(--field);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+}
+.transfer-status[hidden] { display: none; }
+.progress-track {
+	height: 10px;
+	overflow: hidden;
+	background: #0e0f11;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+}
+.progress-bar {
+	height: 100%;
+	width: 0;
+	background: linear-gradient(90deg, var(--accent-1), var(--accent-2));
+	transition: width .18s ease;
+}
+.progress-copy { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; }
+.transfer-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.transfer-actions button[hidden] { display: none; }
+.decoder-note { margin-top: 12px; line-height: 1.45; }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 860px) {
 	/* Stack the two columns; bring raw typing back to the top like before. */
 	.main { grid-template-columns: 1fr; }
 	.send-card { position: static; order: -1; }
+	.transfer-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 700px) {
 	.preset { grid-template-columns: 1fr; align-items: start; }
 	.radios { flex-direction: column; gap: 10px; }
 	.modal-grid { grid-template-columns: 1fr; }
+	.transfer-options { grid-template-columns: 1fr; }
+	.transfer-options .wide { grid-column: auto; }
+	.card-head.transfer-card-head { align-items: flex-start; flex-direction: column; }
+	.transfer-head-actions { justify-content: flex-start; }
 }
 </style>
 </head>
@@ -357,9 +435,71 @@ input.invalid, textarea.invalid {
 			</div>
 		</div>
 
-	</div>
+		</div>
 
-	<footer class="footer small">
+		<!-- ===== Chunked file transfer ===== -->
+		<section class="card transfer-card" aria-labelledby="transferTitle">
+			<div class="card-head transfer-card-head">
+				<div>
+					<h2 id="transferTitle">File transfer</h2>
+					<div class="small" style="margin-top:5px">Type a text file directly, or wrap any file in the checked WVK1 format.</div>
+				</div>
+				<div class="transfer-head-actions">
+					<a class="button-link btn-ghost btn-sm" href="/decoder.html" target="_blank" rel="noopener">Open decoder</a>
+					<button id="installDecoder" class="btn-ghost btn-sm" type="button">Type decoder source</button>
+				</div>
+			</div>
+
+			<div class="transfer-grid">
+				<label id="fileDrop" class="file-drop" for="fileInput">
+					<input id="fileInput" type="file">
+					<strong>Choose a file</strong>
+					<span class="small">or drop it here</span>
+					<span id="fileMeta" class="file-meta small">No file selected</span>
+				</label>
+
+				<div class="transfer-options">
+					<label class="compact-field wide">
+						<span class="field-label">Transfer mode</span>
+						<select id="transferMode">
+							<option value="auto">Auto (recommended)</option>
+							<option value="raw">Raw text</option>
+							<option value="wvk1">WVK1 / Base64</option>
+						</select>
+					</label>
+					<label class="compact-field">
+						<span class="field-label">Chunk bytes</span>
+						<input id="chunkSize" type="number" min="96" max="1536" step="96" value="768" inputmode="numeric">
+					</label>
+					<label class="compact-field">
+						<span class="field-label">Key delay (ms)</span>
+						<input id="keyDelay" type="number" min="0" max="100" step="1" value="5" inputmode="numeric">
+					</label>
+					<div id="transferHint" class="transfer-hint small wide">Choose a file to see the selected mode.</div>
+				</div>
+			</div>
+
+			<div id="transferStatus" class="transfer-status" hidden>
+				<div class="progress-track" role="progressbar" aria-label="Transfer progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+					<div id="progressBar" class="progress-bar"></div>
+				</div>
+				<div class="progress-copy small">
+					<span id="progressLabel">Ready</span>
+					<span id="progressPercent">0%</span>
+				</div>
+			</div>
+
+			<div class="transfer-actions">
+				<button id="startTransfer" class="btn-sm" type="button" disabled>Start transfer</button>
+				<button id="stopTransfer" class="btn-danger btn-sm" type="button" hidden>Stop</button>
+				<button id="resumeTransfer" class="btn-ghost btn-sm" type="button" hidden>Retry / Resume</button>
+			</div>
+			<div class="decoder-note small">
+				For first-time setup, open a plain-text editor on the target computer, click <b>Type decoder source</b>, and save it as <code>decoder.html</code>. Open that file in Chrome, focus its data box, then send WVK1 files from here.
+			</div>
+		</section>
+
+		<footer class="footer small">
 		<span>FW&nbsp;<b id="fwVer">-</b></span>
 		<span class="footer-sep">·</span>
 		<span>Storage&nbsp;<b id="storVer">-</b></span>
@@ -435,6 +575,22 @@ const mSave      = document.getElementById("mSave");
 const nameErr    = document.getElementById("nameErr");
 const valueErr   = document.getElementById("valueErr");
 
+const fileInput       = document.getElementById("fileInput");
+const fileDrop        = document.getElementById("fileDrop");
+const fileMeta        = document.getElementById("fileMeta");
+const transferMode    = document.getElementById("transferMode");
+const chunkSizeInput  = document.getElementById("chunkSize");
+const keyDelayInput   = document.getElementById("keyDelay");
+const transferHint    = document.getElementById("transferHint");
+const transferStatus  = document.getElementById("transferStatus");
+const progressBar     = document.getElementById("progressBar");
+const progressLabel   = document.getElementById("progressLabel");
+const progressPercent = document.getElementById("progressPercent");
+const startTransfer   = document.getElementById("startTransfer");
+const stopTransfer    = document.getElementById("stopTransfer");
+const resumeTransfer  = document.getElementById("resumeTransfer");
+const installDecoder  = document.getElementById("installDecoder");
+
 /* Token palette — names must match the firmware key table. */
 const PALETTE = [
 	["Modifiers",  ["CTRL", "ALT", "SHIFT", "WIN"]],
@@ -460,7 +616,482 @@ function setMsg(t, cls) {
 	if (cls) { toastTimer = setTimeout(() => toast.classList.remove("show"), 3200); }
 }
 
+/* ---------- Chunked file transfer ---------- */
+const CRC_TABLE = (() => {
+	const table = new Uint32Array(256);
+	for (let n = 0; n < 256; n++) {
+		let c = n;
+		for (let k = 0; k < 8; k++) { c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1); }
+		table[n] = c >>> 0;
+	}
+	return table;
+})();
+
+const SHA256_K = new Uint32Array([
+	0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+	0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+	0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+	0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+	0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+	0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+	0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+	0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+]);
+
+let selectedFile = null;
+let selectedBytes = null;
+let selectedIsRaw = false;
+let selectionToken = 0;
+let activeTransfer = null;
+let transferBusy = false;
+
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+function clampNumber(value, min, max, fallback) {
+	const n = Number(value);
+	return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
+}
+
+function formatBytes(n) {
+	if (n < 1024) { return n + " B"; }
+	if (n < 1048576) { return (n / 1024).toFixed(1) + " KiB"; }
+	return (n / 1048576).toFixed(1) + " MiB";
+}
+
+function isRawSafe(bytes) {
+	for (let i = 0; i < bytes.length; i++) {
+		const b = bytes[i];
+		if (b !== 9 && b !== 10 && b !== 13 && (b < 32 || b > 126)) { return false; }
+	}
+	return true;
+}
+
+function normalizeRawBytes(bytes) {
+	const out = [];
+	for (let i = 0; i < bytes.length; i++) {
+		const b = bytes[i];
+		if (b === 13) {
+			if (i + 1 < bytes.length && bytes[i + 1] === 10) { i++; }
+			out.push(10);
+		} else {
+			out.push(b);
+		}
+	}
+	return new Uint8Array(out);
+}
+
+function resolvedTransferMode() {
+	if (transferMode.value !== "auto") { return transferMode.value; }
+	return selectedIsRaw ? "raw" : "wvk1";
+}
+
+function safeFilename(name) {
+	let clean = String(name || "download.bin").replace(/[^\x20-\x7e]/g, "_").replace(/[\\/:*?"<>|]/g, "_").trim();
+	if (!clean) { clean = "download.bin"; }
+	return clean.slice(0, 128);
+}
+
+function updateTransferHint() {
+	if (!selectedFile || !selectedBytes) {
+		transferHint.textContent = "Choose a file to see the selected mode.";
+		transferHint.className = "transfer-hint small wide";
+		startTransfer.disabled = true;
+		return;
+	}
+
+	const mode = resolvedTransferMode();
+	const rawForcedOnBinary = mode === "raw" && !selectedIsRaw;
+	transferHint.className = "transfer-hint small wide" + (rawForcedOnBinary ? " transfer-warning" : "");
+	if (rawForcedOnBinary) {
+		transferHint.textContent = "Raw mode only supports US-ASCII text (plus tab and line breaks). Choose WVK1 for this file.";
+	} else if (mode === "raw") {
+		transferHint.textContent = (transferMode.value === "auto" ? "Auto selected Raw text" : "Raw text") + ": bytes will be typed directly with no recovery envelope.";
+	} else {
+		transferHint.textContent = (transferMode.value === "auto" ? "Auto selected WVK1" : "WVK1") + ": Base64, per-chunk CRC32, size, order and SHA-256 will be verified by decoder.html.";
+	}
+	startTransfer.disabled = transferBusy || rawForcedOnBinary;
+}
+
+async function selectTransferFile(file) {
+	const token = ++selectionToken;
+	selectedFile = file || null;
+	selectedBytes = null;
+	selectedIsRaw = false;
+	resumeTransfer.hidden = true;
+	if (!file) {
+		fileMeta.textContent = "No file selected";
+		updateTransferHint();
+		return;
+	}
+
+	fileMeta.textContent = file.name + " - reading...";
+	startTransfer.disabled = true;
+	try {
+		const bytes = new Uint8Array(await file.arrayBuffer());
+		if (token !== selectionToken) { return; }
+		selectedBytes = bytes;
+		selectedIsRaw = isRawSafe(bytes);
+		fileMeta.textContent = file.name + " - " + formatBytes(bytes.length);
+		updateTransferHint();
+	} catch (e) {
+		if (token !== selectionToken) { return; }
+		selectedFile = null;
+		fileMeta.textContent = "Could not read that file";
+		updateTransferHint();
+		setMsg("Reading file failed", "err");
+	}
+}
+
+function crc32Hex(bytes) {
+	let c = 0xffffffff;
+	for (let i = 0; i < bytes.length; i++) { c = CRC_TABLE[(c ^ bytes[i]) & 255] ^ (c >>> 8); }
+	return ((c ^ 0xffffffff) >>> 0).toString(16).toUpperCase().padStart(8, "0");
+}
+
+function sha256Hex(bytes) {
+	const size = Math.ceil((bytes.length + 9) / 64) * 64;
+	const data = new Uint8Array(size);
+	data.set(bytes);
+	data[bytes.length] = 0x80;
+	const view = new DataView(data.buffer);
+	const bitHigh = Math.floor(bytes.length / 0x20000000);
+	const bitLow = (bytes.length << 3) >>> 0;
+	view.setUint32(size - 8, bitHigh, false);
+	view.setUint32(size - 4, bitLow, false);
+
+	let h0=0x6a09e667,h1=0xbb67ae85,h2=0x3c6ef372,h3=0xa54ff53a;
+	let h4=0x510e527f,h5=0x9b05688c,h6=0x1f83d9ab,h7=0x5be0cd19;
+	const w = new Uint32Array(64);
+	const rr = (x, n) => (x >>> n) | (x << (32 - n));
+
+	for (let off = 0; off < size; off += 64) {
+		for (let i = 0; i < 16; i++) { w[i] = view.getUint32(off + i * 4, false); }
+		for (let i = 16; i < 64; i++) {
+			const a = w[i - 15], b = w[i - 2];
+			const s0 = rr(a,7) ^ rr(a,18) ^ (a >>> 3);
+			const s1 = rr(b,17) ^ rr(b,19) ^ (b >>> 10);
+			w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+		}
+		let a=h0,b=h1,c=h2,d=h3,e=h4,f=h5,g=h6,h=h7;
+		for (let i = 0; i < 64; i++) {
+			const s1 = rr(e,6) ^ rr(e,11) ^ rr(e,25);
+			const ch = (e & f) ^ (~e & g);
+			const t1 = (h + s1 + ch + SHA256_K[i] + w[i]) >>> 0;
+			const s0 = rr(a,2) ^ rr(a,13) ^ rr(a,22);
+			const maj = (a & b) ^ (a & c) ^ (b & c);
+			const t2 = (s0 + maj) >>> 0;
+			h=g; g=f; f=e; e=(d+t1)>>>0; d=c; c=b; b=a; a=(t1+t2)>>>0;
+		}
+		h0=(h0+a)>>>0; h1=(h1+b)>>>0; h2=(h2+c)>>>0; h3=(h3+d)>>>0;
+		h4=(h4+e)>>>0; h5=(h5+f)>>>0; h6=(h6+g)>>>0; h7=(h7+h)>>>0;
+	}
+	return [h0,h1,h2,h3,h4,h5,h6,h7].map(v => v.toString(16).padStart(8,"0")).join("");
+}
+
+function bytesToAscii(bytes) {
+	let out = "";
+	for (let i = 0; i < bytes.length; i += 512) { out += String.fromCharCode.apply(null, bytes.subarray(i, i + 512)); }
+	return out;
+}
+
+function bytesToBase64(bytes) { return btoa(bytesToAscii(bytes)); }
+
+async function readApiResponse(response) {
+	const body = await response.text();
+	let data = {};
+	if (body) {
+		try { data = JSON.parse(body); }
+		catch (e) { data = { message: body.slice(0, 180) }; }
+	}
+	if (!response.ok) {
+		const err = new Error(data.error || data.message || ("HTTP " + response.status));
+		err.status = response.status;
+		throw err;
+	}
+	return data;
+}
+
+async function postForm(path, fields) {
+	const form = new URLSearchParams();
+	Object.keys(fields).forEach(key => form.set(key, fields[key] == null ? "" : String(fields[key])));
+	const response = await fetch(path, {
+		method: "POST",
+		headers: { "Content-Type": "application/x-www-form-urlencoded" },
+		body: form.toString()
+	});
+	return readApiResponse(response);
+}
+
+async function getTransferStatus() {
+	const response = await fetch("/transfer/status", { cache: "no-store" });
+	return readApiResponse(response);
+}
+
+function setProgress(done, total, label) {
+	const percent = total === 0 ? (done > 0 ? 100 : 0) : Math.max(0, Math.min(100, Math.round(done * 100 / total)));
+	transferStatus.hidden = false;
+	progressBar.style.width = percent + "%";
+	progressPercent.textContent = percent + "%";
+	progressLabel.textContent = label || (done + " / " + total + " chunks");
+	const track = transferStatus.querySelector("[role=progressbar]");
+	track.setAttribute("aria-valuenow", String(percent));
+}
+
+function setTransferBusy(busy) {
+	transferBusy = busy;
+	fileInput.disabled = busy;
+	transferMode.disabled = busy;
+	chunkSizeInput.disabled = busy;
+	keyDelayInput.disabled = busy;
+	installDecoder.disabled = busy;
+	stopTransfer.hidden = !busy;
+	if (busy) { startTransfer.disabled = true; }
+	else { updateTransferHint(); }
+}
+
+function makeTransfer(bytes, filename, mode) {
+	const chunkBytes = clampNumber(chunkSizeInput.value, 96, 1536, 768);
+	const delayMs = clampNumber(keyDelayInput.value, 0, 100, 5);
+	chunkSizeInput.value = String(chunkBytes);
+	keyDelayInput.value = String(delayMs);
+	if (mode === "raw" && !isRawSafe(bytes)) { throw new Error("Raw mode requires a US-ASCII text file"); }
+	if (mode === "raw") { bytes = normalizeRawBytes(bytes); }
+	return {
+		bytes,
+		filename: safeFilename(filename),
+		mode,
+		chunkBytes,
+		delayMs,
+		total: Math.ceil(bytes.length / chunkBytes),
+		sha256: "",
+		id: "",
+		next: 0,
+		cancelRequested: false
+	};
+}
+
+function transferChunk(job, index) {
+	const from = index * job.chunkBytes;
+	const part = job.bytes.subarray(from, Math.min(job.bytes.length, from + job.chunkBytes));
+	if (job.mode === "raw") { return { data: bytesToAscii(part), crc32: "" }; }
+	return { data: bytesToBase64(part), crc32: crc32Hex(part) };
+}
+
+function sameTransfer(job, status) {
+	return !status.id || String(status.id) === String(job.id);
+}
+
+function statusNext(status) {
+	const n = Number(status.next);
+	return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+}
+
+function terminalStatusError(status) {
+	const state = String(status.state || "").toLowerCase();
+	if (state === "error") { return status.error || "Device reported a transfer error"; }
+	if (state === "cancelled" || state === "canceled") { return "Transfer was cancelled"; }
+	return "";
+}
+
+async function waitForTransfer(job, predicate, label) {
+	let failures = 0;
+	while (!job.cancelRequested) {
+		try {
+			const status = await getTransferStatus();
+			failures = 0;
+			if (!sameTransfer(job, status)) { throw new Error("The device is handling a different transfer"); }
+			const terminalError = terminalStatusError(status);
+			if (terminalError) { throw new Error(terminalError); }
+			job.next = Math.min(job.total, statusNext(status));
+			setProgress(job.next, job.total, label || ("Typing chunk " + Math.min(job.next + 1, job.total) + " of " + job.total));
+			if (predicate(status)) { return status; }
+		} catch (e) {
+			failures++;
+			if (failures >= 5 || /different transfer|cancelled|transfer error/i.test(e.message || "")) { throw e; }
+		}
+		await sleep(180);
+	}
+	throw new Error("Transfer stopped");
+}
+
+async function waitUntilReady(job, index) {
+	return waitForTransfer(job, status => {
+		const next = statusNext(status);
+		const state = String(status.state || "").toLowerCase();
+		return next > index || state === "ready" || state === "complete";
+	}, "Waiting for device...");
+}
+
+async function postChunkWithRetry(job, index, chunk) {
+	let lastError = null;
+	for (let attempt = 0; attempt < 3 && !job.cancelRequested; attempt++) {
+		try {
+			await postForm("/transfer/chunk", {
+				id: job.id,
+				index,
+				crc32: chunk.crc32,
+				data: chunk.data
+			});
+			return;
+		} catch (e) {
+			lastError = e;
+			await sleep(250 * (attempt + 1));
+			try {
+				const status = await getTransferStatus();
+				if (sameTransfer(job, status) && statusNext(status) > index) { return; }
+			} catch (ignored) { /* retry the idempotent chunk */ }
+		}
+	}
+	throw lastError || new Error("Chunk upload failed");
+}
+
+async function runTransfer(job, resume) {
+	activeTransfer = job;
+	resumeTransfer.hidden = true;
+	setTransferBusy(true);
+	try {
+		if (!resume) {
+			setProgress(0, job.total, job.mode === "wvk1" ? "Calculating SHA-256..." : "Starting...");
+			await sleep(0);
+			if (job.mode === "wvk1") { job.sha256 = sha256Hex(job.bytes); }
+			if (job.cancelRequested) { throw new Error("Transfer stopped"); }
+			const started = await postForm("/transfer/start", {
+				mode: job.mode,
+				filename: job.filename,
+				size: job.bytes.length,
+				chunks: job.total,
+				sha256: job.sha256,
+				delayMs: job.delayMs
+			});
+			if (started.id == null || started.id === "") { throw new Error("Device did not return a transfer id"); }
+			job.id = String(started.id);
+			job.next = statusNext(started);
+		}
+
+		let index = job.next;
+		while (index < job.total && !job.cancelRequested) {
+			const ready = await waitUntilReady(job, index);
+			const next = statusNext(ready);
+			if (next > index) { index = next; continue; }
+			if (String(ready.state || "").toLowerCase() === "complete") { index = job.total; break; }
+
+			setProgress(index, job.total, "Sending chunk " + (index + 1) + " of " + job.total);
+			const chunk = transferChunk(job, index);
+			await postChunkWithRetry(job, index, chunk);
+			const completed = await waitForTransfer(job, s => statusNext(s) > index || String(s.state || "").toLowerCase() === "complete");
+			index = Math.max(index + 1, statusNext(completed));
+			job.next = index;
+		}
+
+		if (job.cancelRequested) { throw new Error("Transfer stopped"); }
+		await waitForTransfer(job, s => String(s.state || "").toLowerCase() === "complete", "Finishing...");
+		setProgress(job.total || 1, job.total || 1, "Transfer complete - decode on the target computer");
+		setMsg('File "' + job.filename + '" sent', "ok");
+		activeTransfer = null;
+	} catch (e) {
+		if (job.cancelRequested || /stopped|cancelled/i.test(e.message || "")) {
+			setProgress(job.next, job.total, "Transfer stopped");
+			activeTransfer = null;
+			setMsg("Transfer stopped", "warn");
+		} else {
+			setProgress(job.next, job.total, "Paused: " + (e.message || "transfer failed"));
+			resumeTransfer.hidden = !job.id;
+			setMsg("Transfer paused - retry is available", "err");
+		}
+	} finally {
+		setTransferBusy(false);
+	}
+}
+
+async function beginSelectedTransfer() {
+	if (!selectedFile || !selectedBytes || transferBusy) { return; }
+	try {
+		const job = makeTransfer(selectedBytes, selectedFile.name, resolvedTransferMode());
+		await runTransfer(job, false);
+	} catch (e) { setMsg(e.message || "Could not start transfer", "err"); }
+}
+
+async function stopActiveTransfer() {
+	const job = activeTransfer;
+	if (!job) { return; }
+	job.cancelRequested = true;
+	setProgress(job.next, job.total, "Stopping...");
+	try { if (job.id) { await postForm("/transfer/cancel", { id: job.id }); } }
+	catch (e) { /* the local loop still stops */ }
+}
+
+async function resumeActiveTransfer() {
+	const job = activeTransfer;
+	if (!job || transferBusy) { return; }
+	try {
+		const status = await getTransferStatus();
+		if (!sameTransfer(job, status)) { throw new Error("Device no longer has this transfer"); }
+		const state = String(status.state || "").toLowerCase();
+		if (state === "cancelled" || state === "canceled" || state === "idle") { throw new Error("Transfer cannot be resumed; clear the target and start again"); }
+		job.next = Math.min(job.total, statusNext(status));
+		job.cancelRequested = false;
+		await runTransfer(job, true);
+	} catch (e) { setMsg(e.message || "Resume failed", "err"); }
+}
+
+async function typeDecoderSource() {
+	if (transferBusy) { return; }
+	if (!confirm("Open a plain-text editor on the target computer and focus the empty document. Type decoder.html source now?")) { return; }
+	try {
+		setMsg("Loading decoder source...", "");
+		const response = await fetch("/decoder.html", { cache: "no-store" });
+		if (!response.ok) { throw new Error("decoder.html is not available on the device"); }
+		const source = await response.text();
+		const bytes = new Uint8Array(source.length);
+		for (let i = 0; i < source.length; i++) {
+			const code = source.charCodeAt(i);
+			if (code > 127) { throw new Error("Decoder source is not US-ASCII"); }
+			bytes[i] = code;
+		}
+		await runTransfer(makeTransfer(bytes, "decoder.html", "raw"), false);
+	} catch (e) { setMsg(e.message || "Could not type decoder source", "err"); }
+}
+
+fileInput.addEventListener("change", () => selectTransferFile(fileInput.files && fileInput.files[0]));
+transferMode.addEventListener("change", updateTransferHint);
+chunkSizeInput.addEventListener("change", updateTransferHint);
+keyDelayInput.addEventListener("change", updateTransferHint);
+startTransfer.addEventListener("click", beginSelectedTransfer);
+stopTransfer.addEventListener("click", stopActiveTransfer);
+resumeTransfer.addEventListener("click", resumeActiveTransfer);
+installDecoder.addEventListener("click", typeDecoderSource);
+
+["dragenter", "dragover"].forEach(type => fileDrop.addEventListener(type, e => {
+	e.preventDefault();
+	if (!transferBusy) { fileDrop.classList.add("drag"); }
+}));
+["dragleave", "drop"].forEach(type => fileDrop.addEventListener(type, e => {
+	e.preventDefault();
+	fileDrop.classList.remove("drag");
+}));
+fileDrop.addEventListener("drop", e => {
+	if (!transferBusy && e.dataTransfer && e.dataTransfer.files.length) {
+		fileInput.files = e.dataTransfer.files;
+		selectTransferFile(e.dataTransfer.files[0]);
+	}
+});
+
 /* ---------- Send text (main textarea) ---------- */
+async function waitForQuickTyping() {
+	let failures = 0;
+	for (;;) {
+		try {
+			const response = await fetch("/typing/status", { cache: "no-store" });
+			const status = await readApiResponse(response);
+			failures = 0;
+			if (!status.busy) { return; }
+		} catch (e) {
+			if (++failures >= 5) { throw e; }
+		}
+		await sleep(120);
+	}
+}
+
 async function sendText(value) {
 	const newlineFlag = cbNL.checked ? "1" : "0";
 	const body = "text=" + encodeURIComponent(value) + "&newline=" + newlineFlag;
@@ -473,12 +1104,19 @@ async function sendText(value) {
 			headers: { "Content-Type": "application/x-www-form-urlencoded" },
 			body
 		});
-		if (!r.ok) { throw new Error(); }
+		if (!r.ok) {
+			const detail = await r.text();
+			throw new Error(detail || "HTTP " + r.status);
+		}
+		if (r.status === 202) {
+			setMsg("Typing text...", "");
+			await waitForQuickTyping();
+		}
 		setMsg("Text sent", "ok");
 		text.value = "";
 		text.focus();
 	} catch (e) {
-		setMsg("Sending text failed", "err");
+		setMsg("Sending text failed" + (e && e.message ? ": " + e.message : ""), "err");
 	} finally {
 		btn.disabled = false;
 	}

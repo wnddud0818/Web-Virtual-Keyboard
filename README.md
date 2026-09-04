@@ -1,27 +1,124 @@
 # Web Virtual Keyboard
-- A tool that turns a [LILYGO ESP32 T-Dongle S3](https://lilygo.cc/products/t-dongle-s3) (or any ESP32-S3 with native USB) into a Wi-Fi-controlled USB keyboard.
-- The device appears to the target machine as a normal USB HID keyboard, and you drive it from any web browser on your network.
-- Type free-form text, or save reusable **presets** (with optional special-key combos like `<CTRL><ALT><DEL>`) and send them with a single click.
-- My use-case is to input long usernames and passwords without typing them manually, or to send CLI / BIOS / LUKS input where SSH is not possible (different networks, pre-boot environments, ...).
-- Works with an ENG (US) keyboard layout on the target.
 
-**IMPORTANT - security**
-- **All text is sent as PLAINTEXT.** The web UI is protected only by HTTP Basic authentication (`MASTER_USER` / `MASTER_PASS`).
-- **Use this device only on trusted local networks.**
-- Preset values marked *Hidden* are never sent back to the browser - they are typed straight from the device - but they are still stored in plaintext in the device's flash.
+Web Virtual Keyboard turns a [LILYGO T-Dongle-S3](https://lilygo.cc/products/t-dongle-s3) into a Wi-Fi-controlled USB keyboard. From a browser on the local network, it can type free-form text, reusable presets, text files, or a checked text representation of any binary file into another computer.
 
-# Features
-- **Free-text typing** - type anything into a textarea and send it. `Enter` sends, `Shift+Enter` inserts a newline; an optional trailing newline can be added.
-- **Presets** - save reusable snippets (name -> value) and send them with one click.
+The normal firmware exposes **USB HID keyboard only**. It does not expose a USB serial, mass-storage, or network interface to the target computer. Diagnostic output remains available on the T-Dongle-S3's external UART connector.
+
+> **IMPORTANT - security**
+>
+> - **All text and file chunks travel over the local network in plaintext.** The web UI is protected only by HTTP Basic authentication (`MASTER_USER` / `MASTER_PASS`), not by TLS.
+> - **Use this device only on trusted local networks and computers you own or are authorised to operate.** Anything sent to the device becomes keyboard input on the focused target application.
+> - Preset values marked *Hidden* are never returned to the browser, but they are still stored in plaintext in the device's flash.
+
+## Architecture
+
+```text
+Controller browser                 T-Dongle-S3                    Target computer
+file / text / presets  --Wi-Fi-->  bounded chunk buffer  --USB--> focused editor or Chrome
+CRC32 + SHA-256                    native HID keyboard            offline decoder.html
+```
+
+File encoding and checksums are calculated in the controller browser. Chunks are sent sequentially, and the dongle keeps only the currently queued chunk in RAM while its non-blocking typing engine emits one key at a time. The total file is never stored in the dongle's RAM, flash, or TF card.
+
+The included board definition targets the original **T-Dongle-S3 with 16 MB QSPI flash and no PSRAM**. T-Display-S3 is a different board. Other ESP32-S3 boards need an appropriate PlatformIO board definition and matching display/UART pins.
+
+## Features
+
+- **Free-text typing** - enter text in the textarea and send it. `Enter` sends, `Shift+Enter` inserts a newline; an optional trailing CRLF can be added.
+- **Chunked file typing** - choose Auto, Raw text, or WVK1/Base64 mode, set the source-byte chunk size and per-key delay, and follow progress in the browser.
+- **Offline decoder** - the firmware serves a self-contained `decoder.html`, and can type its source into an offline target computer during first-time setup. No compiler, Python, PowerShell, or external JavaScript library is required on the target.
+- **Presets** - save reusable snippets and send them with one click.
     - **Groups** - organise presets into collapsible groups. A name must be unique within a group but may repeat across different groups.
     - **Per-preset visibility**:
         - *Plaintext* - value is shown in the UI.
         - *Masked* - value is shown as `••••`.
         - *Hidden* - value never leaves the device; it is typed straight from flash and never sent to the browser.
-    - **Special keys / chords** - preset values can embed `<TOKEN>` keys that plain text can't produce (see below). A visual *special key builder* in the editor inserts them for you.
-- **On-device status** - the display (and UART log) show the device IP once Wi-Fi connects; the web UI footer shows the firmware and storage-layout versions (from `/info`).
+    - **Special keys / chords** - preset values can embed `<TOKEN>` keys that plain text cannot produce. A visual special-key builder inserts them for you.
+- **On-device status** - the display and external UART log show the IP address after Wi-Fi connects. The web footer shows firmware and storage-layout versions from `/info`.
 
-# Special keys (tokens)
+## Target-computer prerequisites
+
+Before typing text or files, prepare the target computer:
+
+1. Select the **English (US)** keyboard layout.
+2. Turn the IME/input method off and make sure **Caps Lock is off**. The typed WVK1 stream and Base64 payload are case-sensitive.
+3. Focus an empty plain-text editor for Raw mode, or the data textarea in `decoder.html` for WVK1 mode.
+4. Keep that window focused and do not use the target keyboard until the transfer finishes.
+
+For source-code files, use a plain editor or disable automatic indentation. An editor that inserts its own indentation after Enter can add extra tabs or spaces on top of the characters being typed.
+
+## File-transfer modes
+
+### Auto
+
+Auto selects **Raw text** only when every source byte is printable US-ASCII or a tab/CR/LF character. If any other byte is present, including UTF-8 text, it selects **WVK1/Base64**. The selected mode is shown before transfer starts.
+
+### Raw text
+
+Raw mode types the original ASCII bytes directly. CRLF and lone CR line endings are normalised to Enter, and tabs are sent as Tab keypresses.
+
+Use it for ASCII-only `.txt`, `.c`, `.cpp`, `.h`, `.py`, `.html`, `.css`, `.json`, and similar files when the target editor is ready to save the result. Raw mode has no checksum envelope: a focus change, dropped keystroke, cancellation, or partial transfer requires clearing the target document and starting again.
+
+### WVK1 / Base64
+
+WVK1 works with text or binary files. The browser divides the original bytes into chunks, Base64-encodes each chunk, calculates a CRC32 for each original chunk, and calculates SHA-256 for the complete original file. The dongle types a stream such as:
+
+```text
+WVK1
+NAME=weather_clock.zip
+SIZE=12345
+CHUNKS=3
+SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+C|000001|A1B2C3D4|<base64 for original chunk 1>
+C|000002|11223344|<base64 for original chunk 2>
+C|000003|55667788|<base64 for original chunk 3>
+END
+```
+
+Chunk numbers in the typed document are one-based. CRC32 is calculated over each decoded original-byte chunk, not over its Base64 characters. Filenames are reduced to a safe printable-ASCII basename before being placed in the header.
+
+The offline decoder checks the WVK1 header, chunk order and count, every chunk CRC32, declared file size, and the SHA-256 emitted by the normal sender before downloading the reconstructed Blob. It reports corruption instead of silently producing an unchecked file. It can also decode a plain Base64 string with a user-supplied filename, but that form has no WVK1 integrity metadata.
+
+## First-time `decoder.html` setup
+
+Use this workflow when the target computer has Chrome but cannot open the dongle's web page:
+
+1. On the target computer, open a new, empty document in a plain-text editor. Confirm US layout, IME off, Caps Lock off, and focus the document.
+2. On the controller browser, open the dongle UI and click **Type decoder source**.
+3. Wait until the transfer reports complete. Save the target document as exactly `decoder.html`. In Windows Notepad, choose **All files** if necessary so it does not become `decoder.html.txt`.
+4. Open the saved `decoder.html` in Chrome and focus its data box.
+5. Back on the controller, choose a file and send it in WVK1 mode.
+6. When typing finishes, use the decoder's validation/download action to reconstruct the original file.
+
+If the target computer can reach the dongle over Wi-Fi, it may instead open `http://DEVICE_IP/decoder.html` directly and optionally save a local copy.
+
+## Transfer reliability and speed
+
+- The default browser settings use 768 original bytes per chunk; the allowed range is 96-1536 bytes. A Base64 payload sent to the dongle is capped at 2048 characters. The key delay is configurable from 0-100 ms (5 ms by default).
+- The browser waits for the device's zero-based `next` counter before sending another chunk. Repeating an already accepted chunk is idempotent, so an uncertain HTTP response does not type that chunk twice. **Retry / Resume** recovers a paused controller-to-dongle session; Stop cancels the current typing job.
+- Progress means the dongle has emitted the HID key reports. A keyboard protocol has no per-character acknowledgement from the target editor, so it cannot prove that the focused application retained every character. WVK1 CRC/SHA validation happens afterwards on the target.
+- Base64 adds about 33% more typed characters. As a rough lower bound, 100 KiB takes about 4.6 minutes at 2 ms/key or 11.4 minutes at 5 ms/key; 1 MiB takes about 47 or 117 minutes respectively. HTTP and application overhead add more time. Larger chunks reduce request overhead but do not reduce the number of keystrokes.
+- If the decoder reports damage, clear its data box and resend. There is no reverse channel from `decoder.html` to request a damaged chunk automatically.
+
+## HTTP endpoints
+
+All functional endpoints require the same HTTP Basic authentication as the web UI.
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/` | Main controller UI |
+| `GET` | `/decoder`, `/decoder.html` | Self-contained offline decoder source |
+| `POST` | `/transfer/start` | Start a Raw or WVK1 session and return its transfer ID |
+| `POST` | `/transfer/chunk` | Queue the next indexed chunk; duplicate completed indexes are acknowledged without retyping |
+| `GET` | `/transfer/status` | Return state, next expected index, progress, limits, and errors |
+| `POST` | `/transfer/cancel`, `/transfer/stop` | Cancel the active typing session |
+| `POST` | `/type`, `/send` | Type free-form text or a stored preset |
+| `GET/POST/DELETE` | `/presets` | Read, save, or remove presets |
+| `GET` | `/info` | Firmware and storage-layout versions |
+
+## Special keys (tokens)
+
 Inside a **preset value**, wrap a key name in `< >` to send a raw key instead of literal text. Token names are case-insensitive.
 
 Special keys use a **chord model**: each `<TOKEN>` is pressed and held as it is read, and the next typed character (if any) is pressed together with all held keys, then the whole chord is released at once. A token with no following character is pressed and released on its own.
@@ -35,6 +132,7 @@ Special keys use a **chord model**: each `<TOKEN>` is pressed and held as it is 
 | `password<ENTER>` | types `password`, then Enter |
 
 Supported tokens:
+
 - **Modifiers:** `CTRL` / `CONTROL`, `SHIFT`, `ALT`, `WIN` / `GUI` / `WINDOWS` / `META`
 - **Editing / whitespace:** `ENTER` / `RETURN`, `ESC` / `ESCAPE`, `BKSP` / `BACKSPACE` / `BS`, `TAB`, `SPACE` / `SPC`
 - **Locks / system:** `CAPS` / `CAPSLOCK`, `PRTSC` / `PRINTSCREEN` / `PRTSCR`, `SCRLK` / `SCROLLLOCK`, `PAUSE` / `BREAK`, `NUMLK` / `NUMLOCK`, `MENU` / `APP` / `APPLICATION`
@@ -43,28 +141,79 @@ Supported tokens:
 
 > Tokens are only parsed for **presets**. The quick *Type text* box sends everything literally, so `<CTRL>` there types the characters `<CTRL>`.
 
-# Hardware requirements
-- [LILYGO ESP32 T-Dongle S3](https://lilygo.cc/products/t-dongle-s3), or any other ESP32-S3 with native USB
-- A web browser to access the GUI
-- A target machine that will receive the keystrokes
+## Hardware requirements
 
-# Quick start
-- Download and open the PlatformIO project in VS Code (PlatformIO IDE extension).
-- Edit `config.h`:
-    - Set `WIFI_SSID`, `WIFI_PASS`, `MASTER_USER` and `MASTER_PASS`.
-    - If using a board other than the [LILYGO ESP32 T-Dongle S3](https://lilygo.cc/products/t-dongle-s3), adjust the other board-specific values in `config.h` / `platformio.ini` as needed.
-- Compile & flash.
-    - `html.cpp` and `html.h` are generated automatically during the build (from `web/index.html`).
-- Plug the native USB port into the target machine (and UART into another machine if you want to see the IP or logs).
-    - On a successful Wi-Fi connection, the device IP is shown on the display and printed over UART.
-- Open `http://DEVICE_IP` in a browser (default port is `80`), log in, and start typing / managing presets.
+- LILYGO T-Dongle-S3, or another ESP32-S3 board configured for native USB device mode
+- A controller phone/computer with a browser on the dongle's Wi-Fi network
+- A target computer that receives USB keystrokes
+- Chrome or another modern browser on the target for WVK1 decoding
+- Optional external USB-UART adapter for logs
 
-# Notes
-- Presets are stored in the ESP32's flash (NVS). The firmware tracks a storage-layout version (`STORAGE_VERSION`); if it opens flash written by a different layout, the preset store is wiped and reinitialised - so a firmware upgrade that bumps that version will clear existing presets.
+## Build and flash
+
+1. Install PlatformIO, then open `Web-Virtual-Keyboard-platformio` as the project directory.
+2. Edit `include/config.h` and set `WIFI_SSID`, `WIFI_PASS`, `MASTER_USER`, and `MASTER_PASS`.
+3. Build from the repository root:
+
+   ```sh
+   pio run -d Web-Virtual-Keyboard-platformio
+   ```
+
+4. Put the dongle in download mode if necessary, then upload:
+
+   ```sh
+   pio run -d Web-Virtual-Keyboard-platformio -t upload
+   ```
+
+5. Reconnect the dongle to the target computer normally. Its display and external UART show the assigned IP address. Open `http://DEVICE_IP` from the controller browser and sign in.
+
+The build hook converts every `web/*.html` file into generated `src/html.cpp` and `include/html.h` PROGMEM assets. Those generated files are intentionally ignored by Git.
+
+### Browser firmware installer
+
+`docs/index.html` installs the same release from desktop Chrome or Edge through Web Serial. It is a single dependency-free page that loads ESP Web Tools from a CDN, so it needs no build step. Every PlatformIO build runs `scripts/package_web_installer.py`, which merges the ESP32-S3 bootloader, partition table, boot application, and firmware into:
+
+```text
+docs/firmware/web-virtual-keyboard.bin
+```
+
+It also regenerates the ESP Web Tools `manifest.json` and a `release.json` containing the version, byte size, and SHA-256. The page reads `release.json` at runtime, so the displayed version is never hardcoded. Serve it locally with:
+
+```sh
+cd docs
+python3 -m http.server 8777
+```
+
+Open `http://localhost:8777` in desktop Chrome or Edge. Web Serial is restricted to secure contexts, so a deployed installer must use HTTPS — pointing GitHub Pages at `main /docs` satisfies this without extra hosting.
+
+### Double-clickable single-file installer
+
+Web Serial also works from `file://`, but the browser blocks `fetch` of local files, so the page cannot read `firmware/manifest.json` from disk. `scripts/build_standalone_installer.py` works around this by embedding the manifest and the firmware into one HTML file and handing them to ESP Web Tools as blob URLs:
+
+```sh
+python3 scripts/build_standalone_installer.py
+```
+
+The result, `docs/wvk-flash-standalone.html` (~1.3 MB), can be opened by double-clicking it in Chrome or Edge — no server required. It is generated on demand and therefore ignored by Git; attach it to a GitHub Release when distributing. An internet connection is still needed because ESP Web Tools lazy-loads its install dialog from the CDN.
+
+> Do not publish a firmware image containing private Wi-Fi or administrator credentials to a public installer. This firmware currently reads those values from `include/config.h`; use a controlled/private deployment or add a separate provisioning flow before public distribution.
+
+### HID-only upload recovery
+
+The application uses native USB OTG in HID-only mode, so USB CDC is unavailable after normal startup. If PlatformIO cannot discover or upload to the device:
+
+1. Unplug the T-Dongle-S3.
+2. Hold its **BOOT** button while plugging it into the development computer.
+3. Release BOOT after the ROM download port appears, then run the upload command.
+4. When upload completes, unplug and reconnect without holding BOOT.
+
+Bootloader/download mode may temporarily enumerate differently; the flashed application itself exposes only the HID keyboard interface.
+
+## Notes
+
+- Presets are stored in ESP32 NVS. If `STORAGE_VERSION` changes, the firmware deliberately wipes and reinitialises incompatible preset data. A firmware-only version bump does not require changing the storage version.
+- The firmware assumes US keyboard mapping. Unicode text should be transferred through WVK1 and reconstructed by `decoder.html`, not typed directly.
 
 <img width="1913" height="901" alt="Snímka obrazovky 2026-07-18 193737" src="https://github.com/user-attachments/assets/b00a74c1-281e-4d7b-8bfa-7963000330d7" />
 <img width="1912" height="905" alt="Snímka obrazovky 2026-07-18 193820" src="https://github.com/user-attachments/assets/b4d9b5ee-2c45-49b2-99a7-318fe79e4955" />
 <img width="2576" height="1932" alt="20260719_023159" src="https://github.com/user-attachments/assets/98dcf398-3484-4ea2-9967-dc914521dc36" />
-
-
-

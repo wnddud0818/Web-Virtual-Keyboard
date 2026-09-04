@@ -1,11 +1,15 @@
 #include "http_handlers.h"
 
 #include <ArduinoJson.h>
+#include <esp_system.h>
+#include <cstdio>
+#include <cstring>
 #include "globals.h"
 #include "config.h"
 #include "storage.h"
 #include "html.h" // will be generated automatically when building
 #include "display.h"
+#include "typing_engine.h"
 
 // === SPECIAL KEY TABLE ===
 // Preset values are literal text with embedded <TOKEN> keys. Each token maps to
@@ -96,9 +100,15 @@ static void sendValue(const String& v)
 		{
 			return;
 		}
-		Keyboard.print(lit);
+		for (size_t i = 0; i < lit.length(); ++i)
+		{
+			Keyboard.write((uint8_t)lit[i]);
+			if (DEFAULT_CHAR_DELAY_MS != 0U)
+			{
+				delay(DEFAULT_CHAR_DELAY_MS);
+			}
+		}
 		lit = "";
-		delay(TYPE_DELAY_MS);
 	};
 
 	// Release the held chord. If triggerChar >= 0 it is pressed together with the
@@ -322,6 +332,294 @@ static bool requireAuth()
     return false;
 }
 
+// === BOUNDED BACKGROUND TRANSFER ===
+//
+// Only the currently typed message lives in the HID engine's fixed buffer. The
+// sender must wait until `next` advances before posting another chunk. This is
+// intentional back-pressure: file size never determines device RAM usage.
+enum class TransferMode : uint8_t
+{
+	RAW,
+	WVK1
+};
+
+enum class TransferState : uint8_t
+{
+	IDLE,
+	TYPING,
+	READY,
+	COMPLETE,
+	CANCELLED,
+	ERROR_STATE
+};
+
+enum class TransferPhase : uint8_t
+{
+	NONE,
+	HEADER,
+	CHUNK
+};
+
+struct TransferContext
+{
+	char id[17] = { 0 };
+	TransferMode mode = TransferMode::RAW;
+	TransferState state = TransferState::IDLE;
+	TransferPhase phase = TransferPhase::NONE;
+	uint32_t next = 0;  // next expected HTTP chunk index (zero based)
+	uint32_t total = 0;
+	uint16_t delayMs = DEFAULT_CHAR_DELAY_MS;
+	char error[80] = { 0 };
+};
+
+static TransferContext transfer;
+
+static const char* transferStateName(TransferState state)
+{
+	switch (state)
+	{
+		case TransferState::IDLE:        return "idle";
+		case TransferState::TYPING:      return "typing";
+		case TransferState::READY:       return "ready";
+		case TransferState::COMPLETE:    return "complete";
+		case TransferState::CANCELLED:   return "cancelled";
+		case TransferState::ERROR_STATE: return "error";
+	}
+	return "error";
+}
+
+static const char* transferModeName(TransferMode mode)
+{
+	return mode == TransferMode::WVK1 ? "wvk1" : "raw";
+}
+
+static bool transferActive()
+{
+	return transfer.state == TransferState::TYPING ||
+		   transfer.state == TransferState::READY;
+}
+
+static void sendJsonError(int status, const char* message, int32_t expected = -1)
+{
+	StaticJsonDocument<256> out;
+	out["ok"] = false;
+	out["error"] = message;
+	if (expected >= 0)
+	{
+		out["expected"] = expected;
+	}
+	String json;
+	serializeJson(out, json);
+	server.send(status, "application/json; charset=utf-8", json);
+}
+
+static void sendTransferStatus(int status, bool duplicate = false)
+{
+	StaticJsonDocument<512> out;
+	out["ok"] = true;
+	out["id"] = transfer.id;
+	out["state"] = transferStateName(transfer.state);
+	out["mode"] = transferModeName(transfer.mode);
+	out["next"] = transfer.next;
+	out["total"] = transfer.total;
+	out["lastCompleted"] = transfer.next == 0U ? -1 : (int32_t)(transfer.next - 1U);
+	out["delayMs"] = transfer.delayMs;
+	out["remainingChars"] = hidTypingRemaining();
+	out["maxChunkChars"] = MAX_TRANSFER_CHUNK_CHARS;
+	out["accepting"] = transfer.state == TransferState::READY;
+	if (transfer.error[0] != '\0')
+	{
+		out["error"] = transfer.error;
+	}
+	if (duplicate)
+	{
+		out["duplicate"] = true;
+	}
+	String json;
+	serializeJson(out, json);
+	server.send(status, "application/json; charset=utf-8", json);
+}
+
+static bool parseUint32(const String& value, uint32_t maximum, uint32_t& parsed)
+{
+	if (value.length() == 0U)
+	{
+		return false;
+	}
+
+	uint64_t result = 0;
+	for (size_t i = 0; i < value.length(); ++i)
+	{
+		const char c = value[i];
+		if (c < '0' || c > '9')
+		{
+			return false;
+		}
+		result = result * 10U + (uint8_t)(c - '0');
+		if (result > maximum)
+		{
+			return false;
+		}
+	}
+	parsed = (uint32_t)result;
+	return true;
+}
+
+static bool parseUint64(const String& value, uint64_t& parsed)
+{
+	if (value.length() == 0U)
+	{
+		return false;
+	}
+
+	uint64_t result = 0;
+	for (size_t i = 0; i < value.length(); ++i)
+	{
+		const char c = value[i];
+		if (c < '0' || c > '9')
+		{
+			return false;
+		}
+		const uint8_t digit = (uint8_t)(c - '0');
+		if (result > (UINT64_MAX - digit) / 10U)
+		{
+			return false;
+		}
+		result = result * 10U + digit;
+	}
+	parsed = result;
+	return true;
+}
+
+static bool isHexString(const String& value, size_t exactLength)
+{
+	if (value.length() != exactLength)
+	{
+		return false;
+	}
+	for (size_t i = 0; i < value.length(); ++i)
+	{
+		const char c = value[i];
+		if (!((c >= '0' && c <= '9') ||
+			  (c >= 'a' && c <= 'f') ||
+			  (c >= 'A' && c <= 'F')))
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+static bool isPrintableAscii(const String& value)
+{
+	for (size_t i = 0; i < value.length(); ++i)
+	{
+		const uint8_t c = (uint8_t)value[i];
+		if (c < 0x20U || c > 0x7EU)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+static bool normalizeRawAscii(String& value)
+{
+	if (value.length() > MAX_TRANSFER_CHUNK_CHARS)
+	{
+		return false;
+	}
+
+	String normalized;
+	if (value.length() != 0U && !normalized.reserve(value.length()))
+	{
+		return false;
+	}
+	for (size_t i = 0; i < value.length(); ++i)
+	{
+		const uint8_t c = (uint8_t)value[i];
+		if (c == '\r')
+		{
+			if (i + 1U < value.length() && value[i + 1U] == '\n')
+			{
+				++i;
+			}
+			normalized += '\n';
+		}
+		else if (c == '\n' || c == '\t' || (c >= 0x20U && c <= 0x7EU))
+		{
+			normalized += (char)c;
+		}
+		else
+		{
+			return false;
+		}
+	}
+	value = normalized;
+	return value.length() <= MAX_TRANSFER_CHUNK_CHARS;
+}
+
+static bool isValidBase64(const String& value)
+{
+	if (value.length() == 0U ||
+		value.length() > MAX_TRANSFER_CHUNK_CHARS ||
+		(value.length() % 4U) != 0U)
+	{
+		return false;
+	}
+
+	bool padding = false;
+	uint8_t paddingCount = 0;
+	for (size_t i = 0; i < value.length(); ++i)
+	{
+		const char c = value[i];
+		if (c == '=')
+		{
+			padding = true;
+			if (++paddingCount > 2U || i + 2U < value.length())
+			{
+				return false;
+			}
+		}
+		else
+		{
+			if (padding || !((c >= 'A' && c <= 'Z') ||
+							 (c >= 'a' && c <= 'z') ||
+							 (c >= '0' && c <= '9') || c == '+' || c == '/'))
+			{
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+static String requestDataArgument()
+{
+	if (server.hasArg("data"))
+	{
+		return server.arg("data");
+	}
+	// ESP32 WebServer exposes a text/plain request body as the `plain` arg.
+	if (server.hasArg("plain"))
+	{
+		return server.arg("plain");
+	}
+	return String();
+}
+
+static bool queueOne(const String& text, uint16_t delayMs)
+{
+	const HidTextSegment segment = { text.c_str(), text.length() };
+	return hidTypingQueue(&segment, 1U, delayMs);
+}
+
+static bool queueSegments(const HidTextSegment* segments, size_t count,
+						  uint16_t delayMs)
+{
+	return hidTypingQueue(segments, count, delayMs);
+}
+
 // === REST API ===
 
 // GET /
@@ -329,33 +627,370 @@ void handleRoot()
 {
 	if (!requireAuth()) { return; }
 
-	server.send(200, "text/html; charset=utf-8", INDEX_HTML);
+	server.send_P(200, "text/html; charset=utf-8", INDEX_HTML);
+}
+
+// GET /decoder and /decoder.html
+void handleDecoder()
+{
+	if (!requireAuth()) { return; }
+
+	server.send_P(200, "text/html; charset=utf-8", DECODER_HTML);
 }
 
 // POST /type  (form: text=..., newline=0|1|true|on)
 // Free-text typing from the main textarea. No token parsing here.
 void handleType() {
 	if (!requireAuth()) return;
+	if (transferActive() || hidTypingBusy()) {
+		server.send(409, "text/plain", "A transfer is active");
+		return;
+	}
 
 	if (!server.hasArg("text")) {
 		server.send(400, "text/plain", "Missing 'text'");
 		return;
 	}
 
-	const String text  = server.arg("text");
+	String text = server.arg("text");
+	if (text.length() > MAX_QUICK_TYPE_CHARS || !normalizeRawAscii(text)) {
+		sendJsonError(400, "text must be at most 2048 US-ASCII characters");
+		return;
+	}
 	const String nlArg = server.hasArg("newline") ? server.arg("newline") : "0";
 	const bool addNL   = (nlArg == "1" || nlArg == "true" || nlArg == "on");
 
-	LogSerial.printf("[TYPE] len=%u addNL=%s | %s\r\n", (unsigned)text.length(), addNL ? "yes" : "no", text.c_str());
+	uint32_t delayValue = DEFAULT_CHAR_DELAY_MS;
+	if (server.hasArg("delayMs") &&
+		!parseUint32(server.arg("delayMs"), MAX_CHAR_DELAY_MS, delayValue)) {
+		sendJsonError(400, "delayMs must be between 0 and 100");
+		return;
+	}
+
+	LogSerial.printf("[TYPE] queued len=%u addNL=%s delay=%lu ms\r\n",
+				 (unsigned)text.length(), addNL ? "yes" : "no",
+				 (unsigned long)delayValue);
 
 	Keyboard.releaseAll();
-	delay(10);
+	if (text.length() == 0U && !addNL) {
+		server.send(200, "text/plain", "OK");
+		return;
+	}
 
-	Keyboard.print(text);
-	if (addNL) { Keyboard.print("\r\n"); }
+	const char newline = '\n';
+	const HidTextSegment segments[] = {
+		{ text.c_str(), text.length() },
+		{ &newline, addNL ? 1U : 0U }
+	};
+	if (!queueSegments(segments, 2U, (uint16_t)delayValue)) {
+		sendJsonError(500, "Could not queue text");
+		return;
+	}
+	server.send(202, "text/plain", "QUEUED");
+}
 
-	delay(TYPE_DELAY_MS);
-	server.send(200, "text/plain", "OK");
+// GET /typing/status -- applies to a queued /type job. Transfer clients should
+// continue to use /transfer/status for sequence acknowledgement.
+void handleTypingStatus()
+{
+	if (!requireAuth()) { return; }
+	StaticJsonDocument<160> out;
+	out["ok"] = true;
+	out["busy"] = hidTypingBusy();
+	out["remainingChars"] = hidTypingRemaining();
+	String json;
+	serializeJson(out, json);
+	server.send(200, "application/json; charset=utf-8", json);
+}
+
+// POST /transfer/start
+// application/x-www-form-urlencoded fields:
+//   mode=raw|wvk1, filename, size, chunks (or total), sha256?, delayMs?
+void handleTransferStart()
+{
+	if (!requireAuth()) { return; }
+	if (transferActive() || hidTypingBusy())
+	{
+		sendJsonError(409, "A keyboard job is already active");
+		return;
+	}
+
+	const String modeArg = server.hasArg("mode") ? server.arg("mode") : String("wvk1");
+	TransferMode mode;
+	if (modeArg == "raw")
+	{
+		mode = TransferMode::RAW;
+	}
+	else if (modeArg == "wvk1")
+	{
+		mode = TransferMode::WVK1;
+	}
+	else
+	{
+		sendJsonError(400, "mode must be raw or wvk1");
+		return;
+	}
+
+	const String filename = server.hasArg("filename") ? server.arg("filename") : String("download.bin");
+	if (filename.length() == 0U || filename.length() > MAX_TRANSFER_FILENAME ||
+		!isPrintableAscii(filename))
+	{
+		sendJsonError(400, "filename must be 1-128 printable ASCII characters");
+		return;
+	}
+
+	uint64_t byteSize = 0;
+	if (!server.hasArg("size") || !parseUint64(server.arg("size"), byteSize))
+	{
+		sendJsonError(400, "size must be an unsigned decimal integer");
+		return;
+	}
+
+	const String totalArg = server.hasArg("chunks") ? server.arg("chunks") :
+		(server.hasArg("total") ? server.arg("total") : String());
+	uint32_t total = 0;
+	if (!parseUint32(totalArg, MAX_TRANSFER_CHUNKS, total))
+	{
+		sendJsonError(400, "chunks must be between 0 and 999999");
+		return;
+	}
+	if ((byteSize == 0U) != (total == 0U))
+	{
+		sendJsonError(400, "empty size and zero chunks must be used together");
+		return;
+	}
+
+	const String sha256 = server.hasArg("sha256") ? server.arg("sha256") : String();
+	if (sha256.length() != 0U && !isHexString(sha256, 64U))
+	{
+		sendJsonError(400, "sha256 must be empty or 64 hexadecimal characters");
+		return;
+	}
+
+	uint32_t delayValue = DEFAULT_CHAR_DELAY_MS;
+	const String delayArg = server.hasArg("delayMs") ? server.arg("delayMs") :
+		(server.hasArg("delay") ? server.arg("delay") : String());
+	if (delayArg.length() != 0U && !parseUint32(delayArg, MAX_CHAR_DELAY_MS, delayValue))
+	{
+		sendJsonError(400, "delayMs must be between 0 and 100");
+		return;
+	}
+
+	transfer = TransferContext();
+	transfer.mode = mode;
+	transfer.total = total;
+	transfer.delayMs = (uint16_t)delayValue;
+	const uint32_t randomPart = esp_random();
+	const uint32_t timePart = millis();
+	snprintf(transfer.id, sizeof(transfer.id), "%08lX%08lX",
+			 (unsigned long)timePart, (unsigned long)randomPart);
+
+	Keyboard.releaseAll();
+	if (mode == TransferMode::RAW)
+	{
+		transfer.state = total == 0U ? TransferState::COMPLETE : TransferState::READY;
+		transfer.phase = TransferPhase::NONE;
+	}
+	else
+	{
+		char sizeBuffer[24];
+		char chunksBuffer[16];
+		snprintf(sizeBuffer, sizeof(sizeBuffer), "%llu", (unsigned long long)byteSize);
+		snprintf(chunksBuffer, sizeof(chunksBuffer), "%lu", (unsigned long)total);
+
+		String header;
+		header.reserve(filename.length() + sha256.length() + 96U);
+		header += "WVK1\nNAME=";
+		header += filename;
+		header += "\nSIZE=";
+		header += sizeBuffer;
+		header += "\nCHUNKS=";
+		header += chunksBuffer;
+		header += '\n';
+		if (sha256.length() != 0U)
+		{
+			header += "SHA256=";
+			header += sha256;
+			header += '\n';
+		}
+		header += '\n';
+		if (total == 0U)
+		{
+			header += "END\n";
+		}
+
+		if (!queueOne(header, transfer.delayMs))
+		{
+			transfer.state = TransferState::ERROR_STATE;
+			strlcpy(transfer.error, "Could not queue WVK1 header", sizeof(transfer.error));
+			sendJsonError(500, transfer.error);
+			return;
+		}
+		transfer.state = TransferState::TYPING;
+		transfer.phase = TransferPhase::HEADER;
+	}
+
+	LogSerial.printf("[TRANSFER] start id=%s mode=%s chunks=%lu delay=%u ms\r\n",
+				 transfer.id, transferModeName(transfer.mode),
+				 (unsigned long)transfer.total, transfer.delayMs);
+	sendTransferStatus(202);
+}
+
+// POST /transfer/chunk
+// Form fields: id, index (or seq), data, and crc32 for WVK1. A text/plain body
+// may be used instead of `data`; the other fields can then be query arguments.
+void handleTransferChunk()
+{
+	if (!requireAuth()) { return; }
+	if (!server.hasArg("id") || server.arg("id") != transfer.id || transfer.id[0] == '\0')
+	{
+		sendJsonError(404, "Unknown transfer id");
+		return;
+	}
+
+	const String indexArg = server.hasArg("index") ? server.arg("index") :
+		(server.hasArg("seq") ? server.arg("seq") : String());
+	uint32_t index = 0;
+	if (!parseUint32(indexArg, MAX_TRANSFER_CHUNKS - 1U, index))
+	{
+		sendJsonError(400, "index must be a zero-based unsigned integer");
+		return;
+	}
+
+	if (index < transfer.next)
+	{
+		sendTransferStatus(200, true);
+		return;
+	}
+	if (index > transfer.next)
+	{
+		sendJsonError(409, "Out-of-order chunk", (int32_t)transfer.next);
+		return;
+	}
+	// A lost HTTP response can cause the sender to retry while this exact chunk
+	// is still being typed. Treat that retry as accepted without re-queuing it.
+	if (transfer.state == TransferState::TYPING && transfer.phase == TransferPhase::CHUNK)
+	{
+		sendTransferStatus(202, true);
+		return;
+	}
+	if (transfer.state != TransferState::READY || index >= transfer.total)
+	{
+		sendJsonError(409, "Transfer is not ready for this chunk", (int32_t)transfer.next);
+		return;
+	}
+	if ((!server.hasArg("data") && !server.hasArg("plain")))
+	{
+		sendJsonError(400, "Missing data");
+		return;
+	}
+
+	String data = requestDataArgument();
+	bool queued = false;
+	if (transfer.mode == TransferMode::RAW)
+	{
+		if (data.length() == 0U || !normalizeRawAscii(data))
+		{
+			sendJsonError(400, "raw data must be 1-2048 US-ASCII characters");
+			return;
+		}
+		queued = queueOne(data, transfer.delayMs);
+	}
+	else
+	{
+		if (!isValidBase64(data))
+		{
+			sendJsonError(400, "data must be 1-2048 characters of padded Base64");
+			return;
+		}
+		if (!server.hasArg("crc32") || !isHexString(server.arg("crc32"), 8U))
+		{
+			sendJsonError(400, "crc32 must be 8 hexadecimal characters");
+			return;
+		}
+
+		String crc32 = server.arg("crc32");
+		crc32.toUpperCase();
+		char prefix[32];
+		const int prefixLength = snprintf(prefix, sizeof(prefix), "C|%06lu|%s|",
+									  (unsigned long)(index + 1U), crc32.c_str());
+		const char* suffix = (index + 1U == transfer.total) ? "\nEND\n" : "\n";
+		const HidTextSegment segments[] =
+		{
+			{ prefix, (size_t)prefixLength },
+			{ data.c_str(), data.length() },
+			{ suffix, strlen(suffix) }
+		};
+		queued = queueSegments(segments, 3U, transfer.delayMs);
+	}
+
+	if (!queued)
+	{
+		transfer.state = TransferState::ERROR_STATE;
+		strlcpy(transfer.error, "Could not queue chunk", sizeof(transfer.error));
+		sendJsonError(500, transfer.error);
+		return;
+	}
+
+	transfer.state = TransferState::TYPING;
+	transfer.phase = TransferPhase::CHUNK;
+	LogSerial.printf("[TRANSFER] id=%s queued chunk=%lu/%lu chars=%u\r\n",
+				 transfer.id, (unsigned long)(index + 1U),
+				 (unsigned long)transfer.total, (unsigned)data.length());
+	sendTransferStatus(202);
+}
+
+// GET /transfer/status
+void handleTransferStatus()
+{
+	if (!requireAuth()) { return; }
+	sendTransferStatus(200);
+}
+
+// POST /transfer/cancel (also registered as /transfer/stop)
+void handleTransferCancel()
+{
+	if (!requireAuth()) { return; }
+	if (server.hasArg("id") && server.arg("id") != transfer.id)
+	{
+		sendJsonError(404, "Unknown transfer id");
+		return;
+	}
+
+	if (transferActive())
+	{
+		hidTypingCancel();
+		transfer.state = TransferState::CANCELLED;
+		transfer.phase = TransferPhase::NONE;
+		strlcpy(transfer.error, "Cancelled by user", sizeof(transfer.error));
+		LogSerial.printf("[TRANSFER] cancelled id=%s next=%lu\r\n",
+					 transfer.id, (unsigned long)transfer.next);
+	}
+	sendTransferStatus(200);
+}
+
+// Called on every main-loop iteration after WebServer processing. It advances
+// at most one HID character, then publishes a completed header/chunk atomically
+// by changing transfer.state / transfer.next.
+void serviceHttpJobs()
+{
+	hidTypingService();
+	if (transfer.state != TransferState::TYPING || hidTypingBusy())
+	{
+		return;
+	}
+
+	if (transfer.phase == TransferPhase::HEADER)
+	{
+		transfer.state = transfer.total == 0U ? TransferState::COMPLETE : TransferState::READY;
+	}
+	else if (transfer.phase == TransferPhase::CHUNK)
+	{
+		++transfer.next;
+		transfer.state = transfer.next >= transfer.total ?
+			TransferState::COMPLETE : TransferState::READY;
+	}
+	transfer.phase = TransferPhase::NONE;
 }
 
 // GET /info
@@ -477,6 +1112,11 @@ void handleDeletePreset()
 void handleSendPreset()
 {
 	if (!requireAuth()) { return; }
+	if (transferActive() || hidTypingBusy())
+	{
+		server.send(409, "text/plain", "A keyboard job is already active");
+		return;
+	}
 
 	if (!server.hasArg("name"))
 	{

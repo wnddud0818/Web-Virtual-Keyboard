@@ -43,10 +43,9 @@ void setup()
 	delay(100);
 	LogSerial.print("\r\n=== Web Keyboard Server ===\r\n");
 
-	USB.begin();
-	Serial.begin(115200);
-	delay(200);
 	Keyboard.begin();
+	USB.begin();
+	delay(200);
 	LogSerial.print("[USB] HID Keyboard ready\r\n");
 	delay(200);
 
@@ -70,7 +69,15 @@ void setup()
 
 	// HTTP routes
 	server.on("/", HTTP_GET, handleRoot);
+	server.on("/decoder", HTTP_GET, handleDecoder);
+	server.on("/decoder.html", HTTP_GET, handleDecoder);
 	server.on("/type", HTTP_POST, handleType);
+	server.on("/typing/status", HTTP_GET, handleTypingStatus);
+	server.on("/transfer/start", HTTP_POST, handleTransferStart);
+	server.on("/transfer/chunk", HTTP_POST, handleTransferChunk);
+	server.on("/transfer/status", HTTP_GET, handleTransferStatus);
+	server.on("/transfer/cancel", HTTP_POST, handleTransferCancel);
+	server.on("/transfer/stop", HTTP_POST, handleTransferCancel);
 	server.on("/info", HTTP_GET, handleGetInfo);
 	server.on("/presets", HTTP_GET, handleGetPresets);
 	server.on("/presets", HTTP_POST, handlePostPreset);
@@ -90,4 +97,5 @@ void setup()
 void loop()
 {
 	server.handleClient();
+	serviceHttpJobs();
 }
