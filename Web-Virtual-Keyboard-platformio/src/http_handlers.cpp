@@ -1,6 +1,7 @@
 #include "http_handlers.h"
 
 #include <ArduinoJson.h>
+#include <WiFi.h>
 #include <esp_system.h>
 #include <cstdio>
 #include <cstring>
@@ -8,6 +9,7 @@
 #include "config.h"
 #include "storage.h"
 #include "html.h" // will be generated automatically when building
+#include "wifi_manager.h"
 #include "display.h"
 #include "typing_engine.h"
 
@@ -1007,6 +1009,255 @@ void handleGetInfo()
 	out += "\"}";
 
 	server.send(200, "application/json; charset=utf-8", out);
+}
+
+// === NETWORK SETTINGS ===
+
+// GET /wifi
+// Reports the saved mode plus what the radio is actually doing right now.
+// Passwords are never sent back: the browser never needs them, and a generated
+// access point password is already readable on the device display.
+void handleGetWifi()
+{
+	if (!requireAuth()) { return; }
+
+	const WifiSettings& saved = wifiSettings();
+	const WifiState     state = wifiState();
+
+	JsonDocument out;
+	out["ok"]        = true;
+	out["mode"]      = (saved.mode == WifiMode::AP) ? "ap" : "auto";
+	out["sta_ssid"]  = saved.staSsid;
+	out["ap_ssid"]   = saved.apSsid;
+	out["ssid"]      = wifiActiveSsid();
+	out["ip"]        = wifiActiveIp();
+	out["ap_min_pass"] = AP_PASS_MIN_LEN;
+
+	switch (state)
+	{
+		case WifiState::STA:
+			out["active"] = "sta";
+			out["rssi"]   = WiFi.RSSI();
+			break;
+
+		case WifiState::AP:
+			out["active"]  = "ap";
+			out["clients"] = WiFi.softAPgetStationNum();
+			break;
+
+		default:
+			out["active"] = "down";
+			break;
+	}
+
+	String json;
+	serializeJson(out, json);
+	server.send(200, "application/json; charset=utf-8", json);
+}
+
+// POST /wifi (form: mode=auto|ap, [sta_ssid], [sta_pass], [ap_ssid], [ap_pass])
+//
+// A password field that is absent keeps the stored one, which is how the UI
+// saves without ever having to echo a secret back to the browser. Present but
+// empty means "no password" and is only accepted for a station network (an
+// open access point would hand the host's keyboard to anyone in range).
+// The device reboots afterwards: switching the radio mode underneath a live
+// HTTP connection is not worth the failure modes.
+void handlePostWifi()
+{
+	if (!requireAuth()) { return; }
+
+	if (transferActive() || hidTypingBusy())
+	{
+		sendJsonError(409, "busy: a transfer or typing job is still running");
+		return;
+	}
+
+	const WifiSettings& saved = wifiSettings();
+	WifiSettings next = saved;
+
+	const String mode = server.arg("mode");
+
+	if (mode == "ap")
+	{
+		next.mode = WifiMode::AP;
+	}
+	else if (mode == "auto")
+	{
+		next.mode = WifiMode::AUTO;
+	}
+	else
+	{
+		sendJsonError(400, "mode must be \"auto\" or \"ap\"");
+		return;
+	}
+
+	if (server.hasArg("sta_ssid"))
+	{
+		next.staSsid = server.arg("sta_ssid");
+		next.staSsid.trim();
+	}
+
+	const bool ssidChanged = next.staSsid != saved.staSsid;
+
+	if (server.hasArg("sta_pass"))
+	{
+		next.staPass = server.arg("sta_pass");
+	}
+	else if (ssidChanged)
+	{
+		// Reusing the old network's password for a new SSID would just fail at
+		// boot, so make the caller be explicit (empty = open network).
+		sendJsonError(400, "sta_pass is required when sta_ssid changes");
+		return;
+	}
+
+	if (next.mode == WifiMode::AUTO && next.staSsid.length() == 0U)
+	{
+		sendJsonError(400, "sta_ssid is required in auto mode");
+		return;
+	}
+
+	if (next.staSsid.length() > 32U)
+	{
+		sendJsonError(400, "sta_ssid is too long");
+		return;
+	}
+
+	if (next.staPass.length() > 63U)
+	{
+		sendJsonError(400, "sta_pass is too long");
+		return;
+	}
+
+	if (server.hasArg("ap_ssid"))
+	{
+		String apSsid = server.arg("ap_ssid");
+		apSsid.trim();
+
+		if (apSsid.length() > 32U)
+		{
+			sendJsonError(400, "ap_ssid is too long");
+			return;
+		}
+
+		if (apSsid.length() != 0U)
+		{
+			next.apSsid = apSsid;
+		}
+	}
+
+	if (server.hasArg("ap_pass"))
+	{
+		const String apPass = server.arg("ap_pass");
+
+		if (apPass.length() != 0U)
+		{
+			if (apPass.length() < AP_PASS_MIN_LEN)
+			{
+				sendJsonError(400, "ap_pass must be at least 8 characters");
+				return;
+			}
+
+			if (apPass.length() > 63U)
+			{
+				sendJsonError(400, "ap_pass is too long");
+				return;
+			}
+
+			next.apPass = apPass;
+		}
+	}
+
+	if (!wifiSave(next))
+	{
+		sendJsonError(500, "could not save the network settings");
+		return;
+	}
+
+	JsonDocument out;
+	out["ok"]         = true;
+	out["mode"]       = (next.mode == WifiMode::AP) ? "ap" : "auto";
+	out["restart_ms"] = WIFI_RESTART_DELAY_MS;
+
+	String json;
+	serializeJson(out, json);
+	server.send(200, "application/json; charset=utf-8", json);
+
+	wifiRequestRestart(WIFI_RESTART_DELAY_MS);
+}
+
+// POST /wifi/scan
+// Kicks off an asynchronous scan and returns immediately; a blocking scan
+// would outlast the request when the caller is attached to the access point.
+void handleWifiScanStart()
+{
+	if (!requireAuth()) { return; }
+
+	wifiScanStart();
+	server.send(202, "application/json; charset=utf-8", "{\"ok\":true,\"state\":\"running\"}");
+}
+
+// GET /wifi/scan
+// -> { state: "idle" | "running" | "done", nets: [ { ssid, rssi, open } ] }
+void handleWifiScanResult()
+{
+	if (!requireAuth()) { return; }
+
+	const int found = wifiScanState();
+
+	if (found == -1)
+	{
+		server.send(200, "application/json; charset=utf-8", "{\"ok\":true,\"state\":\"running\"}");
+		return;
+	}
+
+	if (found < 0)
+	{
+		server.send(200, "application/json; charset=utf-8", "{\"ok\":true,\"state\":\"idle\"}");
+		return;
+	}
+
+	JsonDocument out;
+	out["ok"]    = true;
+	out["state"] = "done";
+	JsonArray nets = out["nets"].to<JsonArray>();
+
+	// Results arrive strongest-first, so the first entry for an SSID is the one
+	// worth keeping. Mesh networks would otherwise fill the list with repeats.
+	String seen;
+	uint8_t listed = 0;
+
+	for (int i = 0; i < found && listed < 24U; i++)
+	{
+		const String ssid = WiFi.SSID(i);
+
+		if (ssid.length() == 0U)
+		{
+			continue; // hidden network, nothing to offer the user
+		}
+
+		String key = "\n";
+		key += ssid;
+		key += "\n";
+
+		if (seen.indexOf(key) >= 0)
+		{
+			continue;
+		}
+
+		seen += key;
+		listed++;
+
+		JsonObject net = nets.add<JsonObject>();
+		net["ssid"] = ssid;
+		net["rssi"] = WiFi.RSSI(i);
+		net["open"] = WiFi.encryptionType(i) == WIFI_AUTH_OPEN;
+	}
+
+	String json;
+	serializeJson(out, json);
+	server.send(200, "application/json; charset=utf-8", json);
 }
 
 // GET /presets

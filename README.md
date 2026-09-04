@@ -9,6 +9,7 @@ The normal firmware exposes **USB HID keyboard only**. It does not expose a USB 
 > - **All text and file chunks travel over the local network in plaintext.** The web UI is protected only by HTTP Basic authentication (`MASTER_USER` / `MASTER_PASS`), not by TLS.
 > - **Use this device only on trusted local networks and computers you own or are authorised to operate.** Anything sent to the device becomes keyboard input on the focused target application.
 > - Preset values marked *Hidden* are never returned to the browser, but they are still stored in plaintext in the device's flash.
+> - **The built-in access point is a way onto the target computer's keyboard.** It is always WPA2-protected and an open access point is refused, but treat its password like the administrator password: anyone in radio range who has it can type on the target. The default password is generated per device on the first boot and shown on the display.
 
 ## Architecture
 
@@ -24,9 +25,10 @@ The included board definition targets the original **T-Dongle-S3 with 16 MB QSPI
 
 ## Features
 
-- **Free-text typing** - enter text in the textarea and send it. `Enter` sends, `Shift+Enter` inserts a newline; an optional trailing CRLF can be added.
+- **Free-text typing** - enter text in the textarea and send it. `Enter` sends, `Shift+Enter` inserts a newline; an optional trailing CRLF can be added. US-ASCII only: HID types keycodes, not characters, so non-ASCII text is rejected before it reaches the device.
 - **Chunked file typing** - choose Auto, Raw text, or WVK1/Base64 mode, set the source-byte chunk size and per-key delay, and follow progress in the browser.
-- **Offline decoder** - the firmware serves a self-contained `decoder.html`, and can type its source into an offline target computer during first-time setup. No compiler, Python, PowerShell, or external JavaScript library is required on the target.
+- **WVK1 text transfer** - paste any UTF-8 text, including Korean and other non-ASCII scripts, and send it through the WVK1 envelope. Only Base64 is ever typed, so the decoder reproduces the original characters exactly. See [Sending non-ASCII text](#sending-non-ascii-text).
+- **Offline decoder** - the firmware serves a self-contained `decoder.html`, and can type its source into an offline target computer during first-time setup. No compiler, Python, PowerShell, or external JavaScript library is required on the target. Anything that decodes to valid UTF-8 text is displayed in the decoder rather than downloaded.
 - **Presets** - save reusable snippets and send them with one click.
     - **Groups** - organise presets into collapsible groups. A name must be unique within a group but may repeat across different groups.
     - **Per-preset visibility**:
@@ -34,7 +36,8 @@ The included board definition targets the original **T-Dongle-S3 with 16 MB QSPI
         - *Masked* - value is shown as `••••`.
         - *Hidden* - value never leaves the device; it is typed straight from flash and never sent to the browser.
     - **Special keys / chords** - preset values can embed `<TOKEN>` keys that plain text cannot produce. A visual special-key builder inserts them for you.
-- **On-device status** - the display and external UART log show the IP address after Wi-Fi connects. The web footer shows firmware and storage-layout versions from `/info`.
+- **Two network modes** - **Auto** joins the saved network and falls back to the device's own access point when it cannot; **Access point only** always runs the device's own network. The mode, the network credentials, and the access point name/password are set from the web UI and stored on the device, so changing networks no longer means rebuilding the firmware.
+- **On-device status** - the display and external UART log show the SSID and IP address in station mode, or the access point's name and password when the access point is up. The web footer shows firmware and storage-layout versions from `/info`.
 
 ## Target-computer prerequisites
 
@@ -80,6 +83,25 @@ Chunk numbers in the typed document are one-based. CRC32 is calculated over each
 
 The offline decoder checks the WVK1 header, chunk order and count, every chunk CRC32, declared file size, and the SHA-256 emitted by the normal sender before downloading the reconstructed Blob. It reports corruption instead of silently producing an unchecked file. It can also decode a plain Base64 string with a user-supplied filename, but that form has no WVK1 integrity metadata.
 
+## Sending non-ASCII text
+
+USB HID transports keycodes, not characters, and the HID keycode table has no entry for Hangul or any other non-ASCII script. The free-text box and Raw mode therefore accept US-ASCII only.
+
+WVK1 sidesteps this entirely, because the characters themselves are never typed:
+
+1. The browser encodes the text as UTF-8 bytes and Base64-encodes them.
+2. The dongle types only the Base64 envelope, which is pure US-ASCII.
+3. `decoder.html` verifies CRC32 and SHA-256, then rebuilds the original bytes.
+
+To send text this way, paste it into **Or send text as WVK1** in the transfer card and press **Send text as WVK1**. It is always sent as WVK1 regardless of the Transfer mode setting, and arrives as `message.txt`.
+
+The decoder decides what to do with any verified payload by content, not by filename: if the bytes are valid UTF-8 with no NUL or stray control bytes, the original text is shown in **Decoded text** with **Copy text** and **Download as file** actions. Everything else downloads as before. A truncated multi-byte character fails the strict UTF-8 check, so a half-received transfer is reported as binary instead of being shown as mojibake.
+
+Two limits remain:
+
+- **Filenames are still ASCII.** The `NAME` header is reduced to printable ASCII, so `보고서.txt` is typed as `_____.txt`. The file contents are unaffected.
+- **Typing Korean directly into an application is not supported.** That would require driving the target's IME by sending 두벌식 jamo keys (`한` as `gks`) and toggling Han/English mode, and the device cannot observe the target's current IME state.
+
 ## First-time `decoder.html` setup
 
 Use this workflow when the target computer has Chrome but cannot open the dongle's web page:
@@ -116,6 +138,9 @@ All functional endpoints require the same HTTP Basic authentication as the web U
 | `POST` | `/type`, `/send` | Type free-form text or a stored preset |
 | `GET/POST/DELETE` | `/presets` | Read, save, or remove presets |
 | `GET` | `/info` | Firmware and storage-layout versions |
+| `GET/POST` | `/wifi` | Read the network mode and current link, or save new settings and reboot |
+| `POST` | `/wifi/scan` | Start an asynchronous scan for nearby networks |
+| `GET` | `/wifi/scan` | Poll the scan: `idle`, `running`, or `done` with the network list |
 
 ## Special keys (tokens)
 
@@ -141,6 +166,29 @@ Supported tokens:
 
 > Tokens are only parsed for **presets**. The quick *Type text* box sends everything literally, so `<CTRL>` there types the characters `<CTRL>`.
 
+## Network modes
+
+The mode and credentials live in the device's own NVS namespace, so they survive a reboot, a different host computer, and a firmware update. `WIFI_SSID` / `WIFI_PASS` in `include/config.h` are only the factory defaults that seed them on the very first boot.
+
+| Mode | Behaviour |
+| --- | --- |
+| **Auto** (default) | Joins the saved network. If it does not connect within `WIFI_STA_TIMEOUT_MS`, the access point comes up instead so the device is still reachable. |
+| **Access point only** | Never touches the station side. The device always runs its own network, which is what a target computer with no router needs. |
+
+Change either from the **Wi-Fi** card in the web UI: pick the mode, optionally **Scan** for nearby networks, then *Save & reboot*. Passwords left blank keep the stored ones, so the UI never has to echo a secret back to the browser.
+
+### Reaching the access point
+
+The access point is named `WVK-XXXX` (the last two bytes of the device MAC) and serves the same UI at `http://192.168.4.1`. Its password is generated per device on the first boot and shown on the display next to `AP pass`; set your own from the web UI, or pin one at build time with `AP_PASS_DEFAULT` in `include/config.h` (required for a build with `ENABLE_DISPLAY false`, which has no way to show a generated one).
+
+While attached to the access point, the controller phone or computer has no internet over that interface. That is why **Auto** is the better everyday mode and **Access point only** is for the router-less case.
+
+### If the device is unreachable
+
+Hold the **BOOT** button for 3 seconds *while the firmware is running*. The station link is dropped, the access point comes up immediately, and the display shows its name and password. BOOT cannot be held from power-on for this - that selects the ROM bootloader - so plug the device in first, then press and hold.
+
+A scan needs the station interface, so running one from the access point puts the radio into AP+STA for a moment and can stall connected clients. The scan is asynchronous and the UI polls for its result, which keeps the request from outliving the connection that made it.
+
 ## Hardware requirements
 
 - LILYGO T-Dongle-S3, or another ESP32-S3 board configured for native USB device mode
@@ -152,7 +200,7 @@ Supported tokens:
 ## Build and flash
 
 1. Install PlatformIO, then open `Web-Virtual-Keyboard-platformio` as the project directory.
-2. Edit `include/config.h` and set `WIFI_SSID`, `WIFI_PASS`, `MASTER_USER`, and `MASTER_PASS`.
+2. Edit `include/config.h` and set `MASTER_USER` and `MASTER_PASS`. `WIFI_SSID` / `WIFI_PASS` are optional here: they seed the saved settings on the first boot, and can be left alone if you intend to provision the network from the access point instead.
 3. Build from the repository root:
 
    ```sh
@@ -165,7 +213,7 @@ Supported tokens:
    pio run -d Web-Virtual-Keyboard-platformio -t upload
    ```
 
-5. Reconnect the dongle to the target computer normally. Its display and external UART show the assigned IP address. Open `http://DEVICE_IP` from the controller browser and sign in.
+5. Reconnect the dongle to the target computer normally. Its display and external UART show the assigned IP address, or the access point's name and password when no network was joined. Open `http://DEVICE_IP` (or `http://192.168.4.1` over the access point) from the controller browser and sign in.
 
 The build hook converts every `web/*.html` file into generated `src/html.cpp` and `include/html.h` PROGMEM assets. Those generated files are intentionally ignored by Git.
 
@@ -196,7 +244,7 @@ python3 scripts/build_standalone_installer.py
 
 The result, `docs/wvk-flash-standalone.html` (~1.3 MB), can be opened by double-clicking it in Chrome or Edge — no server required. It is generated on demand and therefore ignored by Git; attach it to a GitHub Release when distributing. An internet connection is still needed because ESP Web Tools lazy-loads its install dialog from the CDN.
 
-> Do not publish a firmware image containing private Wi-Fi or administrator credentials to a public installer. This firmware currently reads those values from `include/config.h`; use a controlled/private deployment or add a separate provisioning flow before public distribution.
+> Do not publish a firmware image containing private administrator credentials to a public installer. `MASTER_USER` / `MASTER_PASS` are still compile-time values in `include/config.h`, so a public build hands everyone the same sign-in. Wi-Fi no longer has this problem: leave `WIFI_SSID` / `WIFI_PASS` at their placeholders and whoever installs the image provisions their own network over the access point.
 
 ### HID-only upload recovery
 
@@ -212,6 +260,8 @@ Bootloader/download mode may temporarily enumerate differently; the flashed appl
 ## Notes
 
 - Presets are stored in ESP32 NVS. If `STORAGE_VERSION` changes, the firmware deliberately wipes and reinitialises incompatible preset data. A firmware-only version bump does not require changing the storage version.
+- The network settings deliberately live in a separate NVS namespace (`wifi`) from the presets (`cfg`). A `STORAGE_VERSION` bump wipes the preset namespace only, so a firmware update cannot strand the device on a network it can no longer be told about.
+- Saving from the **Wi-Fi** card reboots the device after answering the request, and is refused with `409` while a transfer or typing job is still running.
 - The firmware assumes US keyboard mapping. Unicode text should be transferred through WVK1 and reconstructed by `decoder.html`, not typed directly.
 
 <img width="1913" height="901" alt="Snímka obrazovky 2026-07-18 193737" src="https://github.com/user-attachments/assets/b00a74c1-281e-4d7b-8bfa-7963000330d7" />

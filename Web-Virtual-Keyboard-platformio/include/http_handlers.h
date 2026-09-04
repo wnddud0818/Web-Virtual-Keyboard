@@ -17,5 +17,9 @@ void handleGetPresets();
 void handlePostPreset();
 void handleDeletePreset();
 void handleSendPreset();
+void handleGetWifi();
+void handlePostWifi();
+void handleWifiScanStart();
+void handleWifiScanResult();
 
 #endif

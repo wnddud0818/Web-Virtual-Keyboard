@@ -5,3 +5,7 @@
 #define TFT_SCLK 5
 #define TFT_MOSI 3
 #define TFT_BL   38
+
+// BOOT button, active low. Also a strapping pin: it selects the ROM bootloader
+// when held during reset, so it is only read once the firmware is running.
+#define PIN_RECOVERY_BUTTON 0

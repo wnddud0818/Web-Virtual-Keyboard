@@ -19,7 +19,7 @@ function makeElement(id = "") {
     checked: false,
     files: [],
     style: {},
-    classList: { add() {}, remove() {} },
+    classList: { add() {}, remove() {}, toggle() {} },
     addEventListener(type, handler) { listeners.set(`${id}:${type}`, handler); },
     appendChild() {},
     setAttribute() {},
@@ -46,7 +46,9 @@ const context = vm.createContext({
   String,
   Error,
   Math,
+  Date,
   Promise,
+  TextEncoder,
   setTimeout,
   clearTimeout,
   btoa: value => Buffer.from(value, "binary").toString("base64"),
@@ -56,6 +58,7 @@ const context = vm.createContext({
     getElementById: getElement,
     createElement: () => makeElement("created"),
     querySelector: () => radio,
+    querySelectorAll: () => [radio],
     addEventListener() {}
   },
   fetch: async path => ({
@@ -66,7 +69,7 @@ const context = vm.createContext({
   })
 });
 
-vm.runInContext(`${match[1]}\n;globalThis.protocol = { crc32Hex, sha256Hex, safeFilename, isRawSafe, normalizeRawBytes, bytesToBase64 };`, context);
+vm.runInContext(`${match[1]}\n;globalThis.protocol = { crc32Hex, sha256Hex, safeFilename, isRawSafe, normalizeRawBytes, bytesToBase64, utf8Bytes, isAsciiTypable };`, context);
 const protocol = context.protocol;
 const ascii = value => new Uint8Array(Buffer.from(value, "ascii"));
 
@@ -79,5 +82,23 @@ assert.equal(protocol.isRawSafe(new Uint8Array([9, 10, 13, 32, 126])), true);
 assert.equal(protocol.isRawSafe(new Uint8Array([0, 127, 255])), false);
 assert.deepEqual(Array.from(protocol.normalizeRawBytes(new Uint8Array([65, 13, 10, 66, 13, 67]))),
   [65, 10, 66, 10, 67]);
+
+// --- WVK1 text send: UTF-8 encoding, and the ASCII gate on quick typing ---
+assert.deepEqual(Array.from(protocol.utf8Bytes("한")), [0xed, 0x95, 0x9c]);
+assert.deepEqual(Array.from(protocol.utf8Bytes("A")), [65]);
+assert.equal(protocol.utf8Bytes("").length, 0);
+assert.equal(protocol.utf8Bytes(null).length, 0);
+
+const mixedText = "한글 mixed with English";
+assert.equal(Buffer.from(protocol.utf8Bytes(mixedText)).toString("utf8"), mixedText,
+  "mixed Korean/English text must survive UTF-8 encoding for the WVK1 envelope");
+
+// Whatever the gate lets through must also be typable byte-for-byte in raw mode.
+assert.equal(protocol.isAsciiTypable("plain ascii\t\r\n"), true);
+assert.equal(protocol.isRawSafe(protocol.utf8Bytes("plain ascii\t\r\n")), true);
+assert.equal(protocol.isAsciiTypable(mixedText), false, "Hangul has no HID keycode");
+assert.equal(protocol.isAsciiTypable("caf" + String.fromCharCode(0xe9)), false,
+  "Latin-1 accents have no keycode");
+assert.equal(protocol.isAsciiTypable("bell" + String.fromCharCode(7)), false, "control bytes have no keycode either");
 
 console.log("index script tests passed");

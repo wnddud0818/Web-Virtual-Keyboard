@@ -10,7 +10,10 @@
 SPIClass spi_lcd(FSPI);
 Adafruit_ST7735 tft(&spi_lcd, TFT_CS, TFT_DC, TFT_RST);
 
-uint8_t chars_to_delete[MAX_LINES] = {0}; // stores chars from previous display_write_word() for right side
+// Characters drawn by the previous call on each line, per alignment, so both
+// the label and the value can be rewritten at runtime (the Wi-Fi rows swap
+// between station and access point wording).
+static uint8_t chars_to_delete[2][MAX_LINES] = {{0}};
 
 void display_write_word(uint16_t color, Align align, uint32_t line, const char *word)
 {
@@ -19,31 +22,35 @@ void display_write_word(uint16_t color, Align align, uint32_t line, const char *
         return;
     }
 
+    const int16_t  y        = DISPLAY_TOP_HW_OFFSET + (BORDER_OFFSET + (line * NEW_LINE_OFFSET));
+    const uint8_t  length   = (uint8_t)strlen(word);
+    const uint8_t  side     = (align == Align::LEFT) ? 0U : 1U;
+    uint8_t       &previous = chars_to_delete[side][line];
+
+    if (previous != 0)
+    {
+        const int16_t clear_x = (align == Align::LEFT)
+            ? BORDER_OFFSET
+            : (int16_t)(DISPLAY_WIDTH - (BORDER_OFFSET + (previous * CHARACTER_WIDTH)));
+
+        tft.fillRect(
+            clear_x,
+            y,
+            BORDER_OFFSET + (previous * CHARACTER_WIDTH),
+            NEW_LINE_OFFSET,
+            COLOR_BACKGROUND
+        );
+    }
+
+    previous = length;
+
+    const int16_t x = (align == Align::LEFT)
+        ? BORDER_OFFSET
+        : (int16_t)(DISPLAY_WIDTH - (BORDER_OFFSET + (length * CHARACTER_WIDTH)));
+
     tft.setTextColor(color);
-
-    if(align == Align::LEFT)
-    {
-        tft.setCursor(BORDER_OFFSET, DISPLAY_TOP_HW_OFFSET + (BORDER_OFFSET + (line * NEW_LINE_OFFSET)));
-        tft.print(word);
-    }
-    else if(align == Align::RIGHT)
-    {
-        if(chars_to_delete[line] != 0)
-        {
-            tft.fillRect(
-                DISPLAY_WIDTH - (BORDER_OFFSET + (chars_to_delete[line] * CHARACTER_WIDTH)), 
-                DISPLAY_TOP_HW_OFFSET + (BORDER_OFFSET + (line * NEW_LINE_OFFSET)), 
-                BORDER_OFFSET + (chars_to_delete[line] * CHARACTER_WIDTH), 
-                NEW_LINE_OFFSET, 
-                COLOR_BACKGROUND
-            );
-        }
-
-        chars_to_delete[line] = strlen(word);
-
-        tft.setCursor(DISPLAY_WIDTH - (BORDER_OFFSET + (strlen(word) * CHARACTER_WIDTH)), DISPLAY_TOP_HW_OFFSET + (BORDER_OFFSET + (line * NEW_LINE_OFFSET)));
-        tft.print(word);
-    }
+    tft.setCursor(x, y);
+    tft.print(word);
 }
 
 void display_init()
@@ -77,6 +84,7 @@ void display_init()
     sprintf(temp_string, "%d", getPresetsCount());
     display_write_word(COLOR_WHITE, Align::RIGHT, 3, temp_string);
 
-    display_write_word(COLOR_WHITE, Align::RIGHT, 4, WIFI_SSID);
-    display_write_word(COLOR_ERROR, Align::RIGHT, 5, "Disconnected");  
+    // Rows 4 and 5 hold the network state and are filled in by wifiInit(): the
+    // SSID is a runtime setting now, and the wording differs per mode.
+    display_write_word(COLOR_WHITE, Align::RIGHT, 5, "Connecting");
 }

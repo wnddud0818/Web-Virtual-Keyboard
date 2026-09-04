@@ -1,39 +1,11 @@
 #include <Arduino.h>
-#include <WiFi.h>
 
 #include "config.h"
 #include "storage.h"
 #include "globals.h"
 #include "http_handlers.h"
 #include "display.h"
-
-bool connectWiFi()
-{
-	LogSerial.printf("[WiFi] Connecting to \"%s\"...", WIFI_SSID);
-
-	WiFi.setHostname(HOSTNAME);
-	WiFi.mode(WIFI_MODE_STA);
-	WiFi.begin(WIFI_SSID, WIFI_PASS);
-
-	const uint32_t start = millis();
-
-	while (WiFi.status() != WL_CONNECTED && (millis() - start) < 20000U)
-	{
-		delay(250);
-		LogSerial.print('.');
-	}
-
-	LogSerial.print("\r\n");
-
-	if (WiFi.status() == WL_CONNECTED)
-	{
-		LogSerial.printf("[WiFi] OK: %s\r\n", WiFi.localIP().toString().c_str());
-		return true;
-	}
-
-	LogSerial.print("[WiFi] FAILED (timeout).\r\n");
-	return false;
-}
+#include "wifi_manager.h"
 
 // ---------- Setup / Loop ----------
 void setup()
@@ -54,18 +26,12 @@ void setup()
 
 #if ENABLE_DISPLAY
 	display_init();
-
-	if(connectWiFi())
-	{
-		display_write_word(COLOR_OK, Align::RIGHT, 5, WiFi.localIP().toString().c_str());
-	}
-	else
-	{
-		display_write_word(COLOR_ERROR, Align::RIGHT, 5, "Disconnected");
-	}
-#else
-	(void)connectWiFi();
 #endif
+
+	// Loads the saved mode and credentials and brings the radio up: the saved
+	// network in AUTO mode, the built-in access point when that fails or when
+	// the AP mode was selected. Also paints the two network rows.
+	wifiInit();
 
 	// HTTP routes
 	server.on("/", HTTP_GET, handleRoot);
@@ -83,6 +49,10 @@ void setup()
 	server.on("/presets", HTTP_POST, handlePostPreset);
 	server.on("/presets", HTTP_DELETE, handleDeletePreset);
 	server.on("/send", HTTP_POST, handleSendPreset);
+	server.on("/wifi", HTTP_GET, handleGetWifi);
+	server.on("/wifi", HTTP_POST, handlePostWifi);
+	server.on("/wifi/scan", HTTP_GET, handleWifiScanResult);
+	server.on("/wifi/scan", HTTP_POST, handleWifiScanStart);
 
 	server.on("/favicon.ico", HTTP_GET, []()
 	{
@@ -98,4 +68,5 @@ void loop()
 {
 	server.handleClient();
 	serviceHttpJobs();
+	wifiService();
 }

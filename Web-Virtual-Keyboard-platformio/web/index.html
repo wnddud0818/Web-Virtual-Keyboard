@@ -67,7 +67,7 @@ h3 { margin: 0 0 4px; font-size: 20px; }
 .row + .row { margin-top: 10px; }
 
 /* Inputs & textarea share styling */
-input[type="text"], input[type="number"], select, textarea {
+input[type="text"], input[type="number"], input[type="password"], select, textarea {
 	padding: 10px 14px;
 	font-size: var(--fs-body);
 	color: var(--text);
@@ -80,7 +80,7 @@ input[type="text"], input[type="number"], select, textarea {
 	width: 100%;
 }
 
-input[type="text"], input[type="number"], select { height: 48px; }
+input[type="text"], input[type="number"], input[type="password"], select { height: 48px; }
 select { appearance: none; -webkit-appearance: none; cursor: pointer; }
 
 textarea {
@@ -96,6 +96,7 @@ textarea {
 
 input[type="text"]:focus, input[type="text"]:hover,
 input[type="number"]:focus, input[type="number"]:hover,
+input[type="password"]:focus, input[type="password"]:hover,
 select:focus, select:hover,
 textarea:focus, textarea:hover {
 	border-color: var(--accent-1);
@@ -380,6 +381,23 @@ input.invalid, textarea.invalid {
 .transfer-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 .transfer-actions button[hidden] { display: none; }
 .decoder-note { margin-top: 12px; line-height: 1.45; }
+.text-send { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.text-send textarea { min-height: 84px; }
+.text-send-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; }
+
+/* ---------- Wi-Fi ---------- */
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field-grid .wide { grid-column: 1 / -1; }
+.wifi-fields--off { opacity: .45; pointer-events: none; }
+.wifi-advanced { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
+.wifi-advanced summary { cursor: pointer; font-weight: 600; }
+.wifi-advanced summary:focus-visible { outline: 2px solid var(--accent-1); outline-offset: 3px; }
+.wifi-mode-note { margin-top: 4px; }
+
+@media (max-width: 700px) {
+	.field-grid { grid-template-columns: 1fr; }
+	.field-grid .wide { grid-column: auto; }
+}
 
 /* ---------- Responsive ---------- */
 @media (max-width: 860px) {
@@ -441,8 +459,8 @@ input.invalid, textarea.invalid {
 		<section class="card transfer-card" aria-labelledby="transferTitle">
 			<div class="card-head transfer-card-head">
 				<div>
-					<h2 id="transferTitle">File transfer</h2>
-					<div class="small" style="margin-top:5px">Type a text file directly, or wrap any file in the checked WVK1 format.</div>
+					<h2 id="transferTitle">File / text transfer</h2>
+					<div class="small" style="margin-top:5px">Type a text file directly, or wrap any file - or any UTF-8 text - in the checked WVK1 format.</div>
 				</div>
 				<div class="transfer-head-actions">
 					<a class="button-link btn-ghost btn-sm" href="/decoder.html" target="_blank" rel="noopener">Open decoder</a>
@@ -479,6 +497,15 @@ input.invalid, textarea.invalid {
 				</div>
 			</div>
 
+			<div class="text-send">
+				<label class="field-label" for="wvkText">Or send text as WVK1 (UTF-8, any script)</label>
+				<textarea id="wvkText" placeholder="Paste text here. Only Base64 is typed, so the decoder shows the original characters - Korean included." autocomplete="off" spellcheck="false"></textarea>
+				<div class="text-send-row">
+					<button id="sendTextWvk" class="btn-sm" type="button" disabled>Send text as WVK1</button>
+					<span id="textSendMeta" class="small">Nothing to send yet.</span>
+				</div>
+			</div>
+
 			<div id="transferStatus" class="transfer-status" hidden>
 				<div class="progress-track" role="progressbar" aria-label="Transfer progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
 					<div id="progressBar" class="progress-bar"></div>
@@ -495,7 +522,64 @@ input.invalid, textarea.invalid {
 				<button id="resumeTransfer" class="btn-ghost btn-sm" type="button" hidden>Retry / Resume</button>
 			</div>
 			<div class="decoder-note small">
-				For first-time setup, open a plain-text editor on the target computer, click <b>Type decoder source</b>, and save it as <code>decoder.html</code>. Open that file in Chrome, focus its data box, then send WVK1 files from here.
+				For first-time setup, open a plain-text editor on the target computer, click <b>Type decoder source</b>, and save it as <code>decoder.html</code>. Open that file in Chrome, focus its data box, then send WVK1 files or text from here. Anything that decodes to valid UTF-8 text is shown in the decoder instead of being downloaded.
+			</div>
+		</section>
+
+		<!-- ===== Wi-Fi ===== -->
+		<section class="card" aria-labelledby="wifiTitle">
+			<div class="card-head">
+				<div>
+					<h2 id="wifiTitle">Wi-Fi</h2>
+					<div class="small wifi-mode-note" id="wifiNow">Loading &hellip;</div>
+				</div>
+				<button id="wifiScan" class="btn-ghost btn-sm" type="button">Scan</button>
+			</div>
+
+			<div class="radios radios--stack" style="margin-bottom:16px">
+				<label>
+					<input type="radio" name="wifiMode" value="auto" checked>
+					<span><b>Auto</b> &mdash; join the network below, fall back to the device's own access point</span>
+				</label>
+				<label>
+					<input type="radio" name="wifiMode" value="ap">
+					<span><b>Access point only</b> &mdash; always run the device's own network, never join another</span>
+				</label>
+			</div>
+
+			<div class="field-grid" id="wifiStaFields">
+				<label class="compact-field">
+					<span class="field-label">Network (SSID) <span class="field-error" id="wifiSsidErr"></span></span>
+					<input id="wifiSsid" type="text" list="wifiNets" autocomplete="off" placeholder="Your Wi-Fi name">
+					<datalist id="wifiNets"></datalist>
+				</label>
+				<label class="compact-field">
+					<span class="field-label">Password</span>
+					<input id="wifiPass" type="password" autocomplete="new-password" placeholder="Leave empty to keep the saved one">
+				</label>
+				<div class="small wide" id="wifiScanHint">Press <b>Scan</b> to list nearby networks. Scanning briefly interrupts anything connected to the access point.</div>
+			</div>
+
+			<details class="wifi-advanced">
+				<summary class="small">Access point settings</summary>
+				<div class="field-grid" style="margin-top:12px">
+					<label class="compact-field">
+						<span class="field-label">AP name (SSID)</span>
+						<input id="wifiApSsid" type="text" autocomplete="off">
+					</label>
+					<label class="compact-field">
+						<span class="field-label">AP password <span class="field-error" id="wifiApPassErr"></span></span>
+						<input id="wifiApPass" type="password" autocomplete="new-password" placeholder="Leave empty to keep the saved one">
+					</label>
+					<div class="small wide">The access point serves this page at <code>192.168.4.1</code>. Its password is shown on the device display &mdash; at least 8 characters, an open access point is not allowed.</div>
+				</div>
+			</details>
+
+			<div class="transfer-actions">
+				<button id="wifiSave" class="btn-sm" type="button">Save &amp; reboot</button>
+			</div>
+			<div class="decoder-note small">
+				Saving reboots the device, so this page loses its connection. Reconnect to the network you chose &mdash; in access point mode that is the device's own network at <code>192.168.4.1</code>. Holding the <b>BOOT</b> button for 3 seconds always brings the access point back up.
 			</div>
 		</section>
 
@@ -590,6 +674,22 @@ const startTransfer   = document.getElementById("startTransfer");
 const stopTransfer    = document.getElementById("stopTransfer");
 const resumeTransfer  = document.getElementById("resumeTransfer");
 const installDecoder  = document.getElementById("installDecoder");
+const wvkTextInput    = document.getElementById("wvkText");
+const sendTextWvk     = document.getElementById("sendTextWvk");
+const textSendMeta    = document.getElementById("textSendMeta");
+
+const wifiNow      = document.getElementById("wifiNow");
+const wifiScanBtn  = document.getElementById("wifiScan");
+const wifiStaFields= document.getElementById("wifiStaFields");
+const wifiSsid     = document.getElementById("wifiSsid");
+const wifiSsidErr  = document.getElementById("wifiSsidErr");
+const wifiPass     = document.getElementById("wifiPass");
+const wifiNets     = document.getElementById("wifiNets");
+const wifiApSsid   = document.getElementById("wifiApSsid");
+const wifiApPass   = document.getElementById("wifiApPass");
+const wifiApPassErr= document.getElementById("wifiApPassErr");
+const wifiSaveBtn  = document.getElementById("wifiSave");
+const wifiScanHint = document.getElementById("wifiScanHint");
 
 /* Token palette — names must match the firmware key table. */
 const PALETTE = [
@@ -685,6 +785,16 @@ function resolvedTransferMode() {
 	return selectedIsRaw ? "raw" : "wvk1";
 }
 
+// Text always travels as UTF-8 bytes inside a WVK1 envelope, so non-ASCII
+// scripts survive: only the Base64 of these bytes is ever typed over HID.
+function utf8Bytes(value) {
+	return new TextEncoder().encode(String(value == null ? "" : value));
+}
+
+function isAsciiTypable(value) {
+	return !/[^\x09\x0a\x0d\x20-\x7e]/.test(String(value == null ? "" : value));
+}
+
 function safeFilename(name) {
 	let clean = String(name || "download.bin").replace(/[^\x20-\x7e]/g, "_").replace(/[\\/:*?"<>|]/g, "_").trim();
 	if (!clean) { clean = "download.bin"; }
@@ -710,6 +820,23 @@ function updateTransferHint() {
 		transferHint.textContent = (transferMode.value === "auto" ? "Auto selected WVK1" : "WVK1") + ": Base64, per-chunk CRC32, size, order and SHA-256 will be verified by decoder.html.";
 	}
 	startTransfer.disabled = transferBusy || rawForcedOnBinary;
+}
+
+function updateTextSendMeta() {
+	const value = wvkTextInput.value || "";
+	if (!value) {
+		textSendMeta.className = "small";
+		textSendMeta.textContent = "Nothing to send yet.";
+		sendTextWvk.disabled = true;
+		return;
+	}
+	const bytes = utf8Bytes(value).length;
+	const chunkBytes = clampNumber(chunkSizeInput.value, 96, 1536, 768);
+	textSendMeta.className = "small";
+	textSendMeta.textContent = value.length + " characters - " + formatBytes(bytes) +
+		" UTF-8 - " + Math.ceil(bytes / chunkBytes) + " chunk(s)" +
+		(isAsciiTypable(value) ? "" : " - non-ASCII, decoder required");
+	sendTextWvk.disabled = transferBusy;
 }
 
 async function selectTransferFile(file) {
@@ -844,21 +971,24 @@ function setTransferBusy(busy) {
 	chunkSizeInput.disabled = busy;
 	keyDelayInput.disabled = busy;
 	installDecoder.disabled = busy;
+	wvkTextInput.disabled = busy;
 	stopTransfer.hidden = !busy;
-	if (busy) { startTransfer.disabled = true; }
-	else { updateTransferHint(); }
+	if (busy) { startTransfer.disabled = true; sendTextWvk.disabled = true; }
+	else { updateTransferHint(); updateTextSendMeta(); }
 }
 
-function makeTransfer(bytes, filename, mode) {
+function makeTransfer(bytes, filename, mode, label) {
 	const chunkBytes = clampNumber(chunkSizeInput.value, 96, 1536, 768);
 	const delayMs = clampNumber(keyDelayInput.value, 0, 100, 5);
 	chunkSizeInput.value = String(chunkBytes);
 	keyDelayInput.value = String(delayMs);
 	if (mode === "raw" && !isRawSafe(bytes)) { throw new Error("Raw mode requires a US-ASCII text file"); }
 	if (mode === "raw") { bytes = normalizeRawBytes(bytes); }
+	const safeName = safeFilename(filename);
 	return {
 		bytes,
-		filename: safeFilename(filename),
+		filename: safeName,
+		label: label || ('File "' + safeName + '"'),
 		mode,
 		chunkBytes,
 		delayMs,
@@ -986,7 +1116,7 @@ async function runTransfer(job, resume) {
 		if (job.cancelRequested) { throw new Error("Transfer stopped"); }
 		await waitForTransfer(job, s => String(s.state || "").toLowerCase() === "complete", "Finishing...");
 		setProgress(job.total || 1, job.total || 1, "Transfer complete - decode on the target computer");
-		setMsg('File "' + job.filename + '" sent', "ok");
+		setMsg(job.label + " sent", "ok");
 		activeTransfer = null;
 	} catch (e) {
 		if (job.cancelRequested || /stopped|cancelled/i.test(e.message || "")) {
@@ -1009,6 +1139,18 @@ async function beginSelectedTransfer() {
 		const job = makeTransfer(selectedBytes, selectedFile.name, resolvedTransferMode());
 		await runTransfer(job, false);
 	} catch (e) { setMsg(e.message || "Could not start transfer", "err"); }
+}
+
+async function beginTextTransfer() {
+	if (transferBusy) { return; }
+	const value = wvkTextInput.value || "";
+	if (!value) { setMsg("Enter some text to send", "warn"); return; }
+	try {
+		// Always WVK1, whatever the mode select says: raw mode types the bytes
+		// as keycodes, and a UTF-8 byte over 0x7f lands on an unrelated key.
+		const job = makeTransfer(utf8Bytes(value), "message.txt", "wvk1", "Text");
+		await runTransfer(job, false);
+	} catch (e) { setMsg(e.message || "Could not start text transfer", "err"); }
 }
 
 async function stopActiveTransfer() {
@@ -1054,12 +1196,15 @@ async function typeDecoderSource() {
 
 fileInput.addEventListener("change", () => selectTransferFile(fileInput.files && fileInput.files[0]));
 transferMode.addEventListener("change", updateTransferHint);
-chunkSizeInput.addEventListener("change", updateTransferHint);
+chunkSizeInput.addEventListener("change", () => { updateTransferHint(); updateTextSendMeta(); });
 keyDelayInput.addEventListener("change", updateTransferHint);
 startTransfer.addEventListener("click", beginSelectedTransfer);
 stopTransfer.addEventListener("click", stopActiveTransfer);
 resumeTransfer.addEventListener("click", resumeActiveTransfer);
 installDecoder.addEventListener("click", typeDecoderSource);
+wvkTextInput.addEventListener("input", updateTextSendMeta);
+sendTextWvk.addEventListener("click", beginTextTransfer);
+updateTextSendMeta();
 
 ["dragenter", "dragover"].forEach(type => fileDrop.addEventListener(type, e => {
 	e.preventDefault();
@@ -1093,6 +1238,13 @@ async function waitForQuickTyping() {
 }
 
 async function sendText(value) {
+	// HID types keycodes, not characters: anything outside US-ASCII has no
+	// keycode and the device rejects it. Point at the WVK1 text path instead.
+	if (!isAsciiTypable(value)) {
+		setMsg('This box types US-ASCII only. For Korean or other non-ASCII text, use "Send text as WVK1" in the transfer card.', "err");
+		return;
+	}
+
 	const newlineFlag = cbNL.checked ? "1" : "0";
 	const body = "text=" + encodeURIComponent(value) + "&newline=" + newlineFlag;
 
@@ -1522,6 +1674,151 @@ async function saveModal() {
 	}
 }
 
+/* ---------- Wi-Fi ---------- */
+// What the device last reported. Used to tell "the user left the password
+// blank to keep it" apart from "the network changed, so the blank is real".
+let wifiSaved = { mode: "auto", sta_ssid: "", ap_ssid: "", ap_min_pass: 8 };
+
+function selectedWifiMode() {
+	const checked = document.querySelector('input[name="wifiMode"]:checked');
+	return checked ? checked.value : "auto";
+}
+
+function syncWifiMode() {
+	const apOnly = selectedWifiMode() === "ap";
+	wifiStaFields.classList.toggle("wifi-fields--off", apOnly);
+}
+
+function describeWifi(info) {
+	if (info.active === "sta") {
+		return 'Connected to "' + (info.ssid || "?") + '" at http://' + info.ip +
+			(typeof info.rssi === "number" ? " (" + info.rssi + " dBm)" : "");
+	}
+	if (info.active === "ap") {
+		const clients = info.clients || 0;
+		return 'Access point "' + (info.ssid || "?") + '" at http://' + info.ip + " - " +
+			clients + (clients === 1 ? " client" : " clients") +
+			(info.mode === "auto" ? " (fallback: the saved network did not connect)" : "");
+	}
+	return "The radio is down.";
+}
+
+async function loadWifi() {
+	try {
+		const info = await readApiResponse(await fetch("/wifi", { cache: "no-store" }));
+
+		wifiSaved = info;
+		wifiSsid.value   = info.sta_ssid || "";
+		wifiApSsid.value = info.ap_ssid || "";
+
+		const radio = document.querySelector('input[name="wifiMode"][value="' + (info.mode === "ap" ? "ap" : "auto") + '"]');
+		if (radio) { radio.checked = true; }
+
+		syncWifiMode();
+		wifiNow.textContent = describeWifi(info);
+	} catch (e) {
+		wifiNow.textContent = "Could not read the Wi-Fi settings.";
+	}
+}
+
+function renderWifiNetworks(nets) {
+	wifiNets.innerHTML = "";
+
+	nets.forEach(net => {
+		const option = document.createElement("option");
+		option.value = net.ssid;
+		option.label = net.rssi + " dBm" + (net.open ? " - open" : "");
+		wifiNets.appendChild(option);
+	});
+}
+
+async function scanWifiNetworks() {
+	wifiScanBtn.disabled = true;
+	setMsg("Scanning for networks \u2026");
+
+	try {
+		await postForm("/wifi/scan", {});
+
+		const deadline = Date.now() + 15000;
+
+		while (Date.now() < deadline) {
+			await sleep(700);
+			const result = await readApiResponse(await fetch("/wifi/scan", { cache: "no-store" }));
+
+			if (result.state === "done") {
+				const nets = result.nets || [];
+				renderWifiNetworks(nets);
+				wifiScanHint.textContent = nets.length
+					? nets.length + " networks found - open the Network field to pick one."
+					: "No networks found.";
+				setMsg("Scan complete", "ok");
+				return;
+			}
+
+			if (result.state === "idle") {
+				throw new Error("The scan did not start");
+			}
+		}
+
+		throw new Error("The scan timed out");
+	} catch (e) {
+		setMsg(e.message || "The scan failed", "err");
+	} finally {
+		wifiScanBtn.disabled = false;
+	}
+}
+
+async function saveWifiSettings() {
+	setFieldError(wifiSsid, wifiSsidErr, "");
+	setFieldError(wifiApPass, wifiApPassErr, "");
+
+	const mode   = selectedWifiMode();
+	const ssid   = wifiSsid.value.trim();
+	const pass   = wifiPass.value;
+	const apSsid = wifiApSsid.value.trim();
+	const apPass = wifiApPass.value;
+	const minPass = wifiSaved.ap_min_pass || 8;
+
+	if (mode === "auto" && !ssid) {
+		setFieldError(wifiSsid, wifiSsidErr, "required in auto mode");
+		return;
+	}
+
+	if (apPass && apPass.length < minPass) {
+		setFieldError(wifiApPass, wifiApPassErr, "at least " + minPass + " characters");
+		return;
+	}
+
+	const fields = { mode: mode };
+
+	if (ssid) { fields.sta_ssid = ssid; }
+
+	// Send the password only when the user typed one, or when the network
+	// itself changed - then an empty value really does mean "open network".
+	if (pass || (ssid && ssid !== (wifiSaved.sta_ssid || ""))) { fields.sta_pass = pass; }
+	if (apSsid && apSsid !== (wifiSaved.ap_ssid || "")) { fields.ap_ssid = apSsid; }
+	if (apPass) { fields.ap_pass = apPass; }
+
+	wifiSaveBtn.disabled = true;
+	setMsg("Saving \u2026");
+
+	try {
+		await postForm("/wifi", fields);
+
+		wifiPass.value   = "";
+		wifiApPass.value = "";
+
+		setMsg("Saved - the device is rebooting", "ok");
+		wifiNow.textContent = mode === "ap"
+			? "Rebooting into access point mode. Connect to the device's own network, then open http://192.168.4.1."
+			: 'Rebooting. Reconnect to "' + ssid + '", then open the device\'s address again.';
+	} catch (e) {
+		setMsg(e.message || "Could not save the Wi-Fi settings", "err");
+	} finally {
+		wifiSaveBtn.disabled = false;
+	}
+}
+
 /* ---------- Footer: firmware / storage versions ---------- */
 async function loadInfo() {
 	try {
@@ -1545,9 +1842,18 @@ mGroup.addEventListener("input", () => setFieldError(mName, nameErr, ""));
 modal.addEventListener("click", (e) => { if (e.target === modal) { closeModal(); } });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !modal.hidden) { closeModal(); } });
 
+wifiScanBtn.addEventListener("click", scanWifiNetworks);
+wifiSaveBtn.addEventListener("click", saveWifiSettings);
+wifiSsid.addEventListener("input", () => setFieldError(wifiSsid, wifiSsidErr, ""));
+wifiApPass.addEventListener("input", () => setFieldError(wifiApPass, wifiApPassErr, ""));
+document.querySelectorAll('input[name="wifiMode"]').forEach(radio => {
+	radio.addEventListener("change", syncWifiMode);
+});
+
 buildPalette();
 loadPresets();
 loadInfo();
+loadWifi();
 </script>
 </body>
 </html>
