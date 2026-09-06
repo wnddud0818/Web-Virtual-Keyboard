@@ -7,6 +7,10 @@
 #include "display.h"
 #include "wifi_manager.h"
 
+#if ARDUINO_USB_MODE || ARDUINO_USB_CDC_ON_BOOT || ARDUINO_USB_MSC_ON_BOOT || ARDUINO_USB_DFU_ON_BOOT
+#error "This firmware requires native USB OTG with CDC, MSC and DFU disabled"
+#endif
+
 // ---------- Setup / Loop ----------
 void setup()
 {
@@ -15,6 +19,12 @@ void setup()
 	delay(100);
 	LogSerial.print("\r\n=== Web Keyboard Server ===\r\n");
 
+	// A single HID keyboard interface identifies the device. Do not inherit
+	// Arduino's default miscellaneous/IAD (composite-device) class tuple.
+	USB.usbClass(0);
+	USB.usbSubClass(0);
+	USB.usbProtocol(0);
+	USB.webUSB(false);
 	Keyboard.begin();
 	USB.begin();
 	delay(200);
