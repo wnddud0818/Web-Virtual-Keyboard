@@ -424,6 +424,10 @@ input.invalid, textarea.invalid {
 <div class="wrap">
 
 	<h1>Web Virtual Keyboard</h1>
+	<section class="card" aria-label="대상 컴퓨터 입력기" style="margin-bottom:20px">
+		<button id="imeToggle" class="btn-ghost btn-sm" type="button">Windows 한/영 전환</button>
+		<div class="small" style="margin-top:8px">받는 PC의 입력창을 포커스한 뒤, 한글(<b>가</b>) 상태일 때 한 번 눌러 영문(<b>A</b>)으로 바꾸고 전송하세요. 누를 때마다 전환되며 현재 상태는 자동 감지하지 않습니다. Windows 한국어 키보드 101키 종류 1(오른쪽 Alt) 기준입니다.</div>
+	</section>
 
 	<div class="main">
 
@@ -1238,6 +1242,25 @@ fileDrop.addEventListener("drop", e => {
 });
 
 /* ---------- Send text (main textarea) ---------- */
+const imeToggle = document.getElementById("imeToggle");
+imeToggle.addEventListener("click", async () => {
+	if (imeToggle.disabled) { return; }
+	if (transferBusy || btn.disabled) {
+		setMsg("전송 중에는 한/영을 전환할 수 없습니다", "err");
+		return;
+	}
+	imeToggle.disabled = true;
+	try {
+		await postForm("/keyboard/ime-toggle", {});
+		setMsg("한/영 전환 키를 보냈습니다. 받는 PC가 영문(A) 상태인지 확인한 뒤 전송하세요.", "ok");
+	} catch (e) {
+		// A lost response may still mean the key was delivered. Never auto-retry.
+		setMsg("전환 결과를 확인할 수 없습니다: " + e.message + ". 받는 PC의 한/영 상태를 먼저 확인하세요.", "err");
+	} finally {
+		imeToggle.disabled = false;
+	}
+});
+
 async function waitForQuickTyping() {
 	let failures = 0;
 	for (;;) {

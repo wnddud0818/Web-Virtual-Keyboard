@@ -39,6 +39,7 @@ void setup()
 	server.on("/decoder.html", HTTP_GET, handleDecoder);
 	server.on("/type", HTTP_POST, handleType);
 	server.on("/typing/status", HTTP_GET, handleTypingStatus);
+	server.on("/keyboard/ime-toggle", HTTP_POST, handleImeToggle);
 	server.on("/transfer/start", HTTP_POST, handleTransferStart);
 	server.on("/transfer/chunk", HTTP_POST, handleTransferChunk);
 	server.on("/transfer/status", HTTP_GET, handleTransferStatus);

@@ -7,6 +7,7 @@ void handleRoot();
 void handleDecoder();
 void handleType();
 void handleTypingStatus();
+void handleImeToggle();
 void handleTransferStart();
 void handleTransferChunk();
 void handleTransferStatus();
