@@ -17,6 +17,7 @@ bool hidTypingQueue(const HidTextSegment* segments, size_t segmentCount,
 void hidTypingService();
 void hidTypingCancel();
 bool hidTypingBusy();
+bool hidTypingFailed();
 size_t hidTypingRemaining();
 
 #endif

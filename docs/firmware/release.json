@@ -1,7 +1,7 @@
 {
   "board": "LILYGO T-Dongle-S3",
   "chipFamily": "ESP32-S3",
-  "version": "1.3.0",
-  "size": 991008,
-  "sha256": "b8b76bef2bf7966f961fe6209eaacad0b584562e805b1f0abc9875a896fd0f92"
+  "version": "1.3.1",
+  "size": 996512,
+  "sha256": "f7057c58c500fdd9e89766f4a28eaabb87f4fb1bcca0faa370a2c7c9086dfd88"
 }

@@ -3,7 +3,7 @@
 #include <cstring>
 
 #include "config.h"
-#include "globals.h"
+#include "hid_keyboard.h"
 
 namespace
 {
@@ -13,6 +13,7 @@ namespace
 	uint16_t characterDelayMs = 0;
 	uint32_t nextCharacterAt = 0;
 	bool busy = false;
+	bool failed = false;
 }
 
 bool hidTypingQueue(const HidTextSegment* segments, size_t segmentCount,
@@ -54,6 +55,7 @@ bool hidTypingQueue(const HidTextSegment* segments, size_t segmentCount,
 	buffer[total] = '\0';
 
 	length = total;
+	failed = false;
 	cursor = 0;
 	characterDelayMs = delayMs;
 	nextCharacterAt = millis();
@@ -63,6 +65,7 @@ bool hidTypingQueue(const HidTextSegment* segments, size_t segmentCount,
 
 void hidTypingService()
 {
+	hidKeyboardService();
 	if (!busy)
 	{
 		return;
@@ -75,7 +78,13 @@ void hidTypingService()
 	}
 
 	// One character per loop keeps WebServer responsive even when delayMs is 0.
-	Keyboard.write((uint8_t)buffer[cursor++]);
+	if (!hidKeyboardWrite((uint8_t)buffer[cursor]))
+	{
+		failed = true;
+		busy = false;
+		return;
+	}
+	++cursor;
 	if (cursor >= length)
 	{
 		busy = false;
@@ -93,7 +102,13 @@ void hidTypingCancel()
 	length = 0;
 	cursor = 0;
 	buffer[0] = '\0';
-	Keyboard.releaseAll();
+	failed = false;
+	hidKeyboardReleaseAll();
+}
+
+bool hidTypingFailed()
+{
+	return failed;
 }
 
 bool hidTypingBusy()

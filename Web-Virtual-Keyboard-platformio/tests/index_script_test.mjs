@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
+import { webcrypto } from "node:crypto";
 
 const html = fs.readFileSync(new URL("../web/index.html", import.meta.url), "utf8");
 const match = html.match(/<script>([\s\S]*?)<\/script>/i);
@@ -38,6 +39,8 @@ const radio = makeElement("radio");
 radio.value = "plain";
 
 const context = vm.createContext({
+  AbortController,
+  crypto: webcrypto,
   Uint8Array,
   Uint32Array,
   DataView,
@@ -135,3 +138,5 @@ assert.equal(toggleRequests, 2, "file transfer must block an IME toggle");
 vm.runInContext("transferBusy = false", context);
 
 console.log("index script tests passed");
+
+export { context, getElement, listeners };

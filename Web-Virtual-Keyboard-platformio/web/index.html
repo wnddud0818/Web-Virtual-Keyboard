@@ -824,7 +824,7 @@ function updateTransferHint() {
 	} else {
 		transferHint.textContent = (transferMode.value === "auto" ? "자동 선택: WVK1" : "WVK1") + " - Base64, 청크별 CRC32, 크기, 순서, SHA-256을 decoder.html이 검증합니다.";
 	}
-	startTransfer.disabled = transferBusy || rawForcedOnBinary;
+	startTransfer.disabled = transferBusy || !!activeTransfer || rawForcedOnBinary;
 }
 
 function updateTextSendMeta() {
@@ -841,7 +841,7 @@ function updateTextSendMeta() {
 	textSendMeta.textContent = value.length + "자 - UTF-8 " + formatBytes(bytes) +
 		" - 청크 " + Math.ceil(bytes / chunkBytes) + "개" +
 		(isAsciiTypable(value) ? "" : " - ASCII 외 문자 포함, 디코더 필요");
-	sendTextWvk.disabled = transferBusy;
+	sendTextWvk.disabled = transferBusy || !!activeTransfer;
 }
 
 async function selectTransferFile(file) {
@@ -943,20 +943,29 @@ async function readApiResponse(response) {
 	return data;
 }
 
+// Timeout leaves delivery uncertain. Start/chunk/cancel requests are keyed by
+// a stable ID so recovery never assumes that a failed fetch was not accepted.
+async function fetchWithTimeout(path, options = {}) {
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), 10000);
+	try {
+		const response = await fetch(path, { ...options, signal: controller.signal });
+		return await readApiResponse(response);
+	} finally { clearTimeout(timer); }
+}
+
 async function postForm(path, fields) {
 	const form = new URLSearchParams();
 	Object.keys(fields).forEach(key => form.set(key, fields[key] == null ? "" : String(fields[key])));
-	const response = await fetch(path, {
+	return fetchWithTimeout(path, {
 		method: "POST",
 		headers: { "Content-Type": "application/x-www-form-urlencoded" },
 		body: form.toString()
 	});
-	return readApiResponse(response);
 }
 
 async function getTransferStatus() {
-	const response = await fetch("/transfer/status", { cache: "no-store" });
-	return readApiResponse(response);
+	return fetchWithTimeout("/transfer/status", { cache: "no-store" });
 }
 
 function setProgress(done, total, label) {
@@ -971,15 +980,23 @@ function setProgress(done, total, label) {
 
 function setTransferBusy(busy) {
 	transferBusy = busy;
-	fileInput.disabled = busy;
-	transferMode.disabled = busy;
-	chunkSizeInput.disabled = busy;
-	keyDelayInput.disabled = busy;
-	installDecoder.disabled = busy;
-	wvkTextInput.disabled = busy;
-	stopTransfer.hidden = !busy;
-	if (busy) { startTransfer.disabled = true; sendTextWvk.disabled = true; }
+	const locked = busy || !!activeTransfer;
+	fileInput.disabled = locked;
+	transferMode.disabled = locked;
+	chunkSizeInput.disabled = locked;
+	keyDelayInput.disabled = locked;
+	installDecoder.disabled = locked;
+	wvkTextInput.disabled = locked;
+	stopTransfer.hidden = !activeTransfer;
+	stopTransfer.disabled = !!(activeTransfer && activeTransfer.cancelPromise);
+	if (locked) { startTransfer.disabled = true; sendTextWvk.disabled = true; }
 	else { updateTransferHint(); updateTextSendMeta(); }
+}
+
+function newTransferId() {
+	const bytes = new Uint8Array(16);
+	crypto.getRandomValues(bytes);
+	return Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
 }
 
 function makeTransfer(bytes, filename, mode, label) {
@@ -999,9 +1016,12 @@ function makeTransfer(bytes, filename, mode, label) {
 		delayMs,
 		total: Math.ceil(bytes.length / chunkBytes),
 		sha256: "",
-		id: "",
+		id: newTransferId(),
+		started: false,
 		next: 0,
-		cancelRequested: false
+		cancelRequested: false,
+		cancelConfirmed: false,
+		cancelPromise: null
 	};
 }
 
@@ -1013,7 +1033,7 @@ function transferChunk(job, index) {
 }
 
 function sameTransfer(job, status) {
-	return !status.id || String(status.id) === String(job.id);
+	return !!status.id && String(status.id) === String(job.id);
 }
 
 function statusNext(status) {
@@ -1048,6 +1068,7 @@ async function waitForTransfer(job, predicate, label) {
 	while (!job.cancelRequested) {
 		try {
 			const status = await getTransferStatus();
+			if (job.cancelRequested) { throw stoppedError(); }
 			failures = 0;
 			if (!sameTransfer(job, status)) { throw terminalError("장치가 다른 전송을 처리하고 있습니다"); }
 			const terminal = terminalStatusError(status);
@@ -1057,7 +1078,7 @@ async function waitForTransfer(job, predicate, label) {
 			if (predicate(status)) { return status; }
 		} catch (e) {
 			failures++;
-			if (failures >= 5 || e.terminal) { throw e; }
+			if (failures >= 5 || e.terminal || e.stopped) { throw e; }
 		}
 		await sleep(180);
 	}
@@ -1095,27 +1116,40 @@ async function postChunkWithRetry(job, index, chunk) {
 	throw lastError || new Error("청크 업로드에 실패했습니다");
 }
 
-async function runTransfer(job, resume) {
+async function startTransferWithRetry(job) {
+	let lastError;
+	for (let attempt = 0; attempt < 3; attempt++) {
+		if (job.cancelRequested) { throw stoppedError(); }
+		try {
+			const started = await postForm("/transfer/start", {
+				id: job.id, mode: job.mode, filename: job.filename,
+				size: job.bytes.length, chunks: job.total,
+				sha256: job.sha256, delayMs: job.delayMs
+			});
+			if (!sameTransfer(job, started)) { throw terminalError("장치가 요청한 전송 ID를 반환하지 않았습니다. 펌웨어를 업데이트하세요"); }
+			job.started = true;
+			job.next = statusNext(started);
+			return;
+		} catch (e) {
+			lastError = e;
+			if (e.terminal || (e.status >= 400 && e.status < 500)) { throw e; }
+			if (attempt < 2) { await sleep(250 * (attempt + 1)); }
+		}
+	}
+	throw lastError;
+}
+
+async function runTransfer(job) {
 	activeTransfer = job;
 	resumeTransfer.hidden = true;
 	setTransferBusy(true);
 	try {
-		if (!resume) {
+		if (!job.started) {
 			setProgress(0, job.total, job.mode === "wvk1" ? "SHA-256 계산 중..." : "시작하는 중...");
 			await sleep(0);
-			if (job.mode === "wvk1") { job.sha256 = sha256Hex(job.bytes); }
 			if (job.cancelRequested) { throw stoppedError(); }
-			const started = await postForm("/transfer/start", {
-				mode: job.mode,
-				filename: job.filename,
-				size: job.bytes.length,
-				chunks: job.total,
-				sha256: job.sha256,
-				delayMs: job.delayMs
-			});
-			if (started.id == null || started.id === "") { throw new Error("장치가 전송 ID를 반환하지 않았습니다"); }
-			job.id = String(started.id);
-			job.next = statusNext(started);
+			if (job.mode === "wvk1" && !job.sha256) { job.sha256 = sha256Hex(job.bytes); }
+			await startTransferWithRetry(job);
 		}
 
 		let index = job.next;
@@ -1140,13 +1174,19 @@ async function runTransfer(job, resume) {
 		activeTransfer = null;
 	} catch (e) {
 		if (job.cancelRequested || e.stopped) {
-			setProgress(job.next, job.total, "전송 중지됨");
-			activeTransfer = null;
-			setMsg("전송을 중지했습니다", "warn");
+			if (job.cancelPromise) { await job.cancelPromise; }
+			if (job.cancelConfirmed) {
+				setProgress(job.next, job.total, "전송 중지 확인됨");
+				activeTransfer = null;
+				setMsg("장치에서 전송 중지를 확인했습니다", "warn");
+			} else {
+				setProgress(job.next, job.total, "장치 중지 확인 필요");
+				setMsg("중지를 확인하지 못했습니다. 장치가 계속 타이핑할 수 있습니다. 연결 복구 후 중지를 다시 누르세요", "err");
+			}
 		} else {
-			setProgress(job.next, job.total, "일시 중지: " + (e.message || "전송 실패"));
-			resumeTransfer.hidden = !job.id;
-			setMsg("전송이 일시 중지되었습니다 - 재시도할 수 있습니다", "err");
+			setProgress(job.next, job.total, (e.terminal ? "전송 오류: " : "일시 중지: ") + (e.message || "전송 실패"));
+			resumeTransfer.hidden = !!e.terminal;
+			setMsg(e.terminal ? "전송을 이어갈 수 없습니다. 중지를 누르고 대상 내용을 비운 뒤 다시 시작하세요" : "전송이 일시 중지되었습니다 - 재시도할 수 있습니다", "err");
 		}
 	} finally {
 		setTransferBusy(false);
@@ -1154,50 +1194,63 @@ async function runTransfer(job, resume) {
 }
 
 async function beginSelectedTransfer() {
-	if (!selectedFile || !selectedBytes || transferBusy) { return; }
+	if (!selectedFile || !selectedBytes || transferBusy || activeTransfer) { return; }
 	try {
 		const job = makeTransfer(selectedBytes, selectedFile.name, resolvedTransferMode());
-		await runTransfer(job, false);
+		await runTransfer(job);
 	} catch (e) { setMsg(e.message || "전송을 시작할 수 없습니다", "err"); }
 }
 
 async function beginTextTransfer() {
-	if (transferBusy) { return; }
+	if (transferBusy || activeTransfer) { return; }
 	const value = wvkTextInput.value || "";
 	if (!value) { setMsg("보낼 텍스트를 입력하세요", "warn"); return; }
 	try {
 		// Always WVK1, whatever the mode select says: raw mode types the bytes
 		// as keycodes, and a UTF-8 byte over 0x7f lands on an unrelated key.
 		const job = makeTransfer(utf8Bytes(value), "message.txt", "wvk1", "텍스트");
-		await runTransfer(job, false);
+		await runTransfer(job);
 	} catch (e) { setMsg(e.message || "텍스트 전송을 시작할 수 없습니다", "err"); }
 }
 
 async function stopActiveTransfer() {
 	const job = activeTransfer;
 	if (!job) { return; }
+	if (job.cancelPromise) { return job.cancelPromise; }
 	job.cancelRequested = true;
-	setProgress(job.next, job.total, "중지하는 중...");
-	try { if (job.id) { await postForm("/transfer/cancel", { id: job.id }); } }
-	catch (e) { /* the local loop still stops */ }
+	resumeTransfer.hidden = true;
+	setProgress(job.next, job.total, "장치 중지를 확인하는 중...");
+	job.cancelPromise = (async () => {
+		try {
+			const status = await postForm("/transfer/cancel", { id: job.id });
+			if (!sameTransfer(job, status) || !["cancelled", "complete"].includes(status.state)) {
+				throw new Error("장치가 중지를 확인하지 않았습니다");
+			}
+			job.cancelConfirmed = true;
+			if (activeTransfer === job) { activeTransfer = null; }
+			setProgress(job.next, job.total, "전송 중지 확인됨");
+			setMsg("장치에서 전송 중지를 확인했습니다", "warn");
+		} catch (e) {
+			setMsg("중지를 확인하지 못했습니다. 장치가 계속 타이핑할 수 있습니다. 연결 복구 후 중지를 다시 누르세요", "err");
+		} finally {
+			job.cancelPromise = null;
+			setTransferBusy(transferBusy);
+		}
+	})();
+	setTransferBusy(transferBusy);
+	return job.cancelPromise;
 }
 
 async function resumeActiveTransfer() {
 	const job = activeTransfer;
-	if (!job || transferBusy) { return; }
-	try {
-		const status = await getTransferStatus();
-		if (!sameTransfer(job, status)) { throw new Error("장치에 이 전송이 더 이상 없습니다"); }
-		const state = String(status.state || "").toLowerCase();
-		if (state === "cancelled" || state === "canceled" || state === "idle") { throw new Error("이 전송은 이어서 진행할 수 없습니다. 대상 문서를 비우고 다시 시작하세요"); }
-		job.next = Math.min(job.total, statusNext(status));
-		job.cancelRequested = false;
-		await runTransfer(job, true);
-	} catch (e) { setMsg(e.message || "이어서 진행하지 못했습니다", "err"); }
+	if (!job || transferBusy || job.cancelRequested) { return; }
+	// runTransfer locks the controls before its first await, including when the
+	// original start response was lost and must be recovered with the same ID.
+	await runTransfer(job);
 }
 
 async function typeDecoderSource() {
-	if (transferBusy) { return; }
+	if (transferBusy || activeTransfer) { return; }
 	if (!confirm("대상 컴퓨터에서 일반 텍스트 편집기를 열고 빈 문서를 포커스하세요. 지금 decoder.html 소스를 타이핑할까요?")) { return; }
 	try {
 		setMsg("디코더 소스를 불러오는 중...", "");
@@ -1210,7 +1263,7 @@ async function typeDecoderSource() {
 			if (code > 127) { throw new Error("디코더 소스가 US-ASCII가 아닙니다"); }
 			bytes[i] = code;
 		}
-		await runTransfer(makeTransfer(bytes, "decoder.html", "raw"), false);
+		await runTransfer(makeTransfer(bytes, "decoder.html", "raw"));
 	} catch (e) { setMsg(e.message || "디코더 소스를 타이핑할 수 없습니다", "err"); }
 }
 
@@ -1228,14 +1281,14 @@ updateTextSendMeta();
 
 ["dragenter", "dragover"].forEach(type => fileDrop.addEventListener(type, e => {
 	e.preventDefault();
-	if (!transferBusy) { fileDrop.classList.add("drag"); }
+	if (!transferBusy && !activeTransfer) { fileDrop.classList.add("drag"); }
 }));
 ["dragleave", "drop"].forEach(type => fileDrop.addEventListener(type, e => {
 	e.preventDefault();
 	fileDrop.classList.remove("drag");
 }));
 fileDrop.addEventListener("drop", e => {
-	if (!transferBusy && e.dataTransfer && e.dataTransfer.files.length) {
+	if (!transferBusy && !activeTransfer && e.dataTransfer && e.dataTransfer.files.length) {
 		fileInput.files = e.dataTransfer.files;
 		selectTransferFile(e.dataTransfer.files[0]);
 	}
@@ -1674,6 +1727,11 @@ async function saveModal() {
 
 	if (bad) {
 		setMsg("표시된 항목을 수정해 주세요", "warn");
+		return;
+	}
+
+	if (!isAsciiTypable(value)) {
+		setFieldError(mValue, valueErr, "프리셋 값은 US-ASCII만 지원합니다. 한글은 WVK1 전송을 사용하세요");
 		return;
 	}
 

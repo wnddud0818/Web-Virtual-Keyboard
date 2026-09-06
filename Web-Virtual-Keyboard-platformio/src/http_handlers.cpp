@@ -12,6 +12,8 @@
 #include "wifi_manager.h"
 #include "display.h"
 #include "typing_engine.h"
+#include "hid_keyboard.h"
+#include "hid_text.h"
 
 // === SPECIAL KEY TABLE ===
 // Preset values are literal text with embedded <TOKEN> keys. Each token maps to
@@ -89,52 +91,54 @@ static const KeyDef* lookupKey(const String& upperName)
 //   "<CTRL><ALT><DEL>" -> hold Ctrl+Alt+Del, released together (real Ctrl+Alt+Del)
 //   "<CTRL>c"          -> Ctrl+C
 //   "<F1><F2>ca"       -> F1+F2+c chord, then "a" typed normally
-static void sendValue(const String& v)
+static bool sendValue(const String& v)
 {
 	uint8_t held[16];   // raw HID usages currently held (modifiers + specials)
 	uint8_t nHeld = 0;
 	String  lit;        // pending normal text (typed as-is, never part of a chord)
 
 	// Type any pending normal text (only reached when nothing is held).
-	auto flushLiteral = [&]()
+	auto flushLiteral = [&]() -> bool
 	{
 		if (lit.length() == 0)
 		{
-			return;
+			return true;
 		}
 		for (size_t i = 0; i < lit.length(); ++i)
 		{
-			Keyboard.write((uint8_t)lit[i]);
+			if (!hidKeyboardWrite((uint8_t)lit[i])) { return false; }
 			if (DEFAULT_CHAR_DELAY_MS != 0U)
 			{
 				delay(DEFAULT_CHAR_DELAY_MS);
 			}
 		}
 		lit = "";
+		return true;
 	};
 
 	// Release the held chord. If triggerChar >= 0 it is pressed together with the
 	// held keys (the chord's final key) before everything is released.
-	auto releaseHeld = [&](int triggerChar)
+	auto releaseHeld = [&](int triggerChar) -> bool
 	{
 		if (nHeld == 0)
 		{
 			if (triggerChar >= 0) { lit += (char)triggerChar; }
-			return;
+			return true;
 		}
 
 		for (uint8_t i = 0; i < nHeld; i++)
 		{
-			Keyboard.pressRaw(held[i]);
+			if (!hidKeyboardPressRaw(held[i])) { hidKeyboardReleaseAll(); return false; }
 		}
 		if (triggerChar >= 0)
 		{
-			Keyboard.press((uint8_t)triggerChar);
+			if (!hidKeyboardPressAscii((uint8_t)triggerChar)) { hidKeyboardReleaseAll(); return false; }
 		}
 		delay(CHORD_PRESS_MS);
-		Keyboard.releaseAll();
+		if (!hidKeyboardReleaseAll()) { return false; }
 		nHeld = 0;
 		delay(TYPE_DELAY_MS);
+		return true;
 	};
 
 	const int n = v.length();
@@ -158,11 +162,12 @@ static void sendValue(const String& v)
 				{
 					// A recognised special key: hold it. Pending normal text is
 					// typed first (it is not part of the upcoming chord).
-					flushLiteral();
+					if (!flushLiteral()) { return false; }
 					if (nHeld < (uint8_t)sizeof(held))
 					{
 						held[nHeld++] = kd->usage;
 					}
+					else { return false; }
 					i = close + 1;
 					continue;
 				}
@@ -174,7 +179,7 @@ static void sendValue(const String& v)
 		// is buffered as plain text.
 		if (nHeld > 0)
 		{
-			releaseHeld((int)(uint8_t)c);
+			if (!releaseHeld((int)(uint8_t)c)) { return false; }
 		}
 		else
 		{
@@ -183,13 +188,14 @@ static void sendValue(const String& v)
 		i++;
 	}
 
-	flushLiteral();
+	if (!flushLiteral()) { return false; }
 
 	// Trailing held keys with no following character: press + release together.
 	if (nHeld > 0)
 	{
-		releaseHeld(-1);
+		if (!releaseHeld(-1)) { return false; }
 	}
+	return true;
 }
 
 // === HELPERS ===
@@ -232,6 +238,11 @@ bool setPreset(const String& name, const String& group,
 	if (name.length() == 0U || name.length() > MAX_PRESET_LENGTH)
 	{
 		if (errMsg != nullptr) { *errMsg = "이름이 올바르지 않습니다"; }
+		return false;
+	}
+	if (hasValue && !hidTextIsAscii(value.c_str(), value.length()))
+	{
+		if (errMsg != nullptr) { *errMsg = "프리셋 값은 US-ASCII만 지원합니다. 한글은 WVK1 전송을 사용하세요"; }
 		return false;
 	}
 	if (hasValue && value.length() > MAX_VALUE_LENGTH)
@@ -364,7 +375,7 @@ enum class TransferPhase : uint8_t
 
 struct TransferContext
 {
-	char id[17] = { 0 };
+	char id[33] = { 0 };
 	TransferMode mode = TransferMode::RAW;
 	TransferState state = TransferState::IDLE;
 	TransferPhase phase = TransferPhase::NONE;
@@ -375,6 +386,8 @@ struct TransferContext
 };
 
 static TransferContext transfer;
+// A cancellation arriving before its start must prevent that late start.
+static char cancelledStartId[33] = { 0 };
 
 static const char* transferStateName(TransferState state)
 {
@@ -673,7 +686,11 @@ void handleType() {
 				 (unsigned)text.length(), addNL ? "yes" : "no",
 				 (unsigned long)delayValue);
 
-	Keyboard.releaseAll();
+	if (!hidKeyboardReleaseAll())
+	{
+		sendJsonError(503, "USB 키보드가 준비되지 않았습니다. 대상 USB 연결을 확인하세요");
+		return;
+	}
 	if (text.length() == 0U && !addNL) {
 		server.send(200, "text/plain", "OK");
 		return;
@@ -696,6 +713,11 @@ void handleType() {
 void handleTypingStatus()
 {
 	if (!requireAuth()) { return; }
+	if (hidTypingFailed())
+	{
+		sendJsonError(503, "USB 전송 실패: 일부 입력이 누락되었을 수 있습니다. 대상 내용을 비우고 다시 전송하세요");
+		return;
+	}
 	StaticJsonDocument<160> out;
 	out["ok"] = true;
 	out["busy"] = hidTypingBusy();
@@ -715,20 +737,51 @@ void handleImeToggle()
 		sendJsonError(409, "전송 중에는 한/영을 전환할 수 없습니다");
 		return;
 	}
-	Keyboard.releaseAll();
-	Keyboard.pressRaw(0xE6); // Right Alt: Korean/English toggle on Windows Type 1.
+	if (!hidKeyboardReleaseAll())
+	{
+		sendJsonError(503, "USB 키보드가 준비되지 않았습니다. 대상 USB 연결을 확인하세요");
+		return;
+	}
+	if (!hidKeyboardPressRaw(0xE6)) // Right Alt on Windows Type 1.
+	{
+		hidKeyboardReleaseAll();
+		sendJsonError(503, "USB 한/영 전환 실패: 대상 PC 상태를 확인하세요");
+		return;
+	}
 	delay(CHORD_PRESS_MS);
-	Keyboard.releaseAll();
+	if (!hidKeyboardReleaseAll())
+	{
+		sendJsonError(503, "USB 키보드가 준비되지 않았습니다. 대상 USB 연결을 확인하세요");
+		return;
+	}
 	delay(300); // Let the target IME settle before accepting another request.
 	server.send(200, "application/json", "{\"ok\":true}");
 }
 
 // POST /transfer/start
 // application/x-www-form-urlencoded fields:
-//   mode=raw|wvk1, filename, size, chunks (or total), sha256?, delayMs?
+//   mode=raw|wvk1, filename, size, chunks (or total), sha256?, delayMs?, id?
+// A 32-hex client ID makes start idempotent for the retained session.
 void handleTransferStart()
 {
 	if (!requireAuth()) { return; }
+	const String requestedId = server.hasArg("id") ? server.arg("id") : String();
+	if (server.hasArg("id") && !isHexString(requestedId, 32U))
+	{
+		sendJsonError(400, "시작 ID는 16진수 32자여야 합니다");
+		return;
+	}
+	if (requestedId.length() && requestedId == cancelledStartId)
+	{
+		sendJsonError(409, "이미 취소한 전송입니다");
+		return;
+	}
+	if (requestedId.length() && requestedId == transfer.id)
+	{
+		sendTransferStatus(200, true);
+		return;
+	}
+
 	if (transferActive() || hidTypingBusy())
 	{
 		sendJsonError(409, "이미 진행 중인 키보드 작업이 있습니다");
@@ -796,6 +849,12 @@ void handleTransferStart()
 		return;
 	}
 
+	if (!hidKeyboardReleaseAll())
+	{
+		sendJsonError(503, "USB 키보드가 준비되지 않았습니다. 대상 USB 연결을 확인하세요");
+		return;
+	}
+
 	transfer = TransferContext();
 	transfer.mode = mode;
 	transfer.total = total;
@@ -804,8 +863,8 @@ void handleTransferStart()
 	const uint32_t timePart = millis();
 	snprintf(transfer.id, sizeof(transfer.id), "%08lX%08lX",
 			 (unsigned long)timePart, (unsigned long)randomPart);
+	if (requestedId.length()) { strlcpy(transfer.id, requestedId.c_str(), sizeof(transfer.id)); }
 
-	Keyboard.releaseAll();
 	if (mode == TransferMode::RAW)
 	{
 		transfer.state = total == 0U ? TransferState::COMPLETE : TransferState::READY;
@@ -973,11 +1032,24 @@ void handleTransferCancel()
 	if (!requireAuth()) { return; }
 	if (server.hasArg("id") && server.arg("id") != transfer.id)
 	{
-		sendJsonError(404, "알 수 없는 전송 ID입니다");
+		const String id = server.arg("id");
+		if (!isHexString(id, 32U))
+		{
+			sendJsonError(404, "알 수 없는 전송 ID입니다");
+			return;
+		}
+		strlcpy(cancelledStartId, id.c_str(), sizeof(cancelledStartId));
+		StaticJsonDocument<160> out;
+		out["ok"] = true;
+		out["id"] = id;
+		out["state"] = "cancelled";
+		String json;
+		serializeJson(out, json);
+		server.send(200, "application/json; charset=utf-8", json);
 		return;
 	}
 
-	if (transferActive())
+	if (transferActive() || transfer.state == TransferState::ERROR_STATE)
 	{
 		hidTypingCancel();
 		transfer.state = TransferState::CANCELLED;
@@ -1000,6 +1072,13 @@ void serviceHttpJobs()
 		return;
 	}
 
+	if (hidTypingFailed())
+	{
+		transfer.state = TransferState::ERROR_STATE;
+		transfer.phase = TransferPhase::NONE;
+		strlcpy(transfer.error, "USB 전송 실패: 대상 내용을 비우고 다시 시작하세요", sizeof(transfer.error));
+		return;
+	}
 	if (transfer.phase == TransferPhase::HEADER)
 	{
 		transfer.state = transfer.total == 0U ? TransferState::COMPLETE : TransferState::READY;
@@ -1410,13 +1489,30 @@ void handleSendPreset()
 		return;
 	}
 
-	const String value = doc.as<JsonArray>()[idx]["value"] | "";
+	String value = doc.as<JsonArray>()[idx]["value"] | "";
+	// Validate stored values too: presets saved by older firmware may be UTF-8.
+	if (!hidTextIsAscii(value.c_str(), value.length()))
+	{
+		sendJsonError(400, "프리셋 값은 US-ASCII만 지원합니다. 한글은 WVK1 전송을 사용하세요");
+		return;
+	}
+	value.replace("\r\n", "\n");
+	value.replace('\r', '\n');
 
 	LogSerial.printf("[SEND] preset \"%s\" len=%u\r\n", name.c_str(), (unsigned)value.length());
 
-	Keyboard.releaseAll();
+	if (!hidKeyboardReleaseAll())
+	{
+		sendJsonError(503, "USB 키보드가 준비되지 않았습니다. 대상 USB 연결을 확인하세요");
+		return;
+	}
 	delay(10);
-	sendValue(value);
+	if (!sendValue(value))
+	{
+		hidKeyboardReleaseAll();
+		sendJsonError(503, "키보드 전송 실패: 일부 입력이 전달되었을 수 있습니다. 대상 내용을 확인하세요");
+		return;
+	}
 	delay(TYPE_DELAY_MS);
 
 	server.send(200, "text/plain", "OK");
