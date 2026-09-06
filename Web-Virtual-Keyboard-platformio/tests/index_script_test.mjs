@@ -101,4 +101,37 @@ assert.equal(protocol.isAsciiTypable("caf" + String.fromCharCode(0xe9)), false,
   "Latin-1 accents have no keycode");
 assert.equal(protocol.isAsciiTypable("bell" + String.fromCharCode(7)), false, "control bytes have no keycode either");
 
+// A toggle must never be retried automatically: the first request may have
+// reached the PC even when its HTTP response was lost.
+let toggleRequests = 0;
+let finishToggle;
+context.fetch = async (path, options) => {
+  assert.equal(path, "/keyboard/ime-toggle");
+  assert.equal(options.method, "POST");
+  toggleRequests++;
+  return new Promise(resolve => { finishToggle = resolve; });
+};
+const toggle = listeners.get("imeToggle:click");
+const pendingToggle = toggle();
+assert.equal(getElement("imeToggle").disabled, true);
+await toggle();
+assert.equal(toggleRequests, 1, "double click must send only one toggle");
+finishToggle({ ok: true, status: 200, text: async () => '{"ok":true}' });
+await pendingToggle;
+assert.equal(getElement("imeToggle").disabled, false);
+
+context.fetch = async () => { toggleRequests++; throw new Error("response lost"); };
+await toggle();
+assert.equal(toggleRequests, 2, "failed toggle must not be automatically retried");
+assert.equal(getElement("imeToggle").disabled, false);
+
+getElement("send").disabled = true;
+await toggle();
+assert.equal(toggleRequests, 2, "quick typing must block an IME toggle");
+getElement("send").disabled = false;
+vm.runInContext("transferBusy = true", context);
+await toggle();
+assert.equal(toggleRequests, 2, "file transfer must block an IME toggle");
+vm.runInContext("transferBusy = false", context);
+
 console.log("index script tests passed");

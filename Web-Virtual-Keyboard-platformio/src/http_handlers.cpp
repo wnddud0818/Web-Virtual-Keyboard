@@ -705,6 +705,24 @@ void handleTypingStatus()
 	server.send(200, "application/json; charset=utf-8", json);
 }
 
+// POST /keyboard/ime-toggle -- Windows Korean IME, 101-key Type 1.
+// This is a user-requested toggle, never an assertion that English is active.
+void handleImeToggle()
+{
+	if (!requireAuth()) { return; }
+	if (transferActive() || hidTypingBusy())
+	{
+		sendJsonError(409, "전송 중에는 한/영을 전환할 수 없습니다");
+		return;
+	}
+	Keyboard.releaseAll();
+	Keyboard.pressRaw(0xE6); // Right Alt: Korean/English toggle on Windows Type 1.
+	delay(CHORD_PRESS_MS);
+	Keyboard.releaseAll();
+	delay(300); // Let the target IME settle before accepting another request.
+	server.send(200, "application/json", "{\"ok\":true}");
+}
+
 // POST /transfer/start
 // application/x-www-form-urlencoded fields:
 //   mode=raw|wvk1, filename, size, chunks (or total), sha256?, delayMs?
