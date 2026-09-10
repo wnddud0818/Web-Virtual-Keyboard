@@ -353,7 +353,8 @@ static bool requireAuth()
 enum class TransferMode : uint8_t
 {
 	RAW,
-	WVK1
+	WVK1,
+	WVK2
 };
 
 enum class TransferState : uint8_t
@@ -405,7 +406,8 @@ static const char* transferStateName(TransferState state)
 
 static const char* transferModeName(TransferMode mode)
 {
-	return mode == TransferMode::WVK1 ? "wvk1" : "raw";
+	return mode == TransferMode::WVK2 ? "wvk2" :
+		(mode == TransferMode::WVK1 ? "wvk1" : "raw");
 }
 
 static bool transferActive()
@@ -760,7 +762,8 @@ void handleImeToggle()
 
 // POST /transfer/start
 // application/x-www-form-urlencoded fields:
-//   mode=raw|wvk1, filename, size, chunks (or total), sha256?, delayMs?, id?
+//   mode=raw|wvk1|wvk2, filename, size, chunks (or total), sha256?, delayMs?, id?
+// WVK2 carries gzip bytes and requires sha256, originalSize, originalSha256.
 // A 32-hex client ID makes start idempotent for the retained session.
 void handleTransferStart()
 {
@@ -798,9 +801,13 @@ void handleTransferStart()
 	{
 		mode = TransferMode::WVK1;
 	}
+	else if (modeArg == "wvk2")
+	{
+		mode = TransferMode::WVK2;
+	}
 	else
 	{
-		sendJsonError(400, "mode는 raw 또는 wvk1이어야 합니다");
+		sendJsonError(400, "mode는 raw, wvk1 또는 wvk2이어야 합니다");
 		return;
 	}
 
@@ -837,6 +844,16 @@ void handleTransferStart()
 	if (sha256.length() != 0U && !isHexString(sha256, 64U))
 	{
 		sendJsonError(400, "sha256은 비어 있거나 16진수 64자여야 합니다");
+		return;
+	}
+	uint64_t originalSize = 0;
+	const String originalSha256 = server.hasArg("originalSha256") ? server.arg("originalSha256") : String();
+	if (mode == TransferMode::WVK2 &&
+		(!isHexString(sha256, 64U) || !isHexString(originalSha256, 64U) ||
+		 !server.hasArg("originalSize") || !parseUint64(server.arg("originalSize"), originalSize) ||
+		 byteSize == 0U))
+	{
+		sendJsonError(400, "WVK2에는 gzip 데이터, 원본 크기, 전송 및 원본 SHA-256이 필요합니다");
 		return;
 	}
 
@@ -878,8 +895,8 @@ void handleTransferStart()
 		snprintf(chunksBuffer, sizeof(chunksBuffer), "%lu", (unsigned long)total);
 
 		String header;
-		header.reserve(filename.length() + sha256.length() + 96U);
-		header += "WVK1\nNAME=";
+		header.reserve(filename.length() + sha256.length() + originalSha256.length() + 180U);
+		header += mode == TransferMode::WVK2 ? "WVK2\nNAME=" : "WVK1\nNAME=";
 		header += filename;
 		header += "\nSIZE=";
 		header += sizeBuffer;
@@ -892,6 +909,15 @@ void handleTransferStart()
 			header += sha256;
 			header += '\n';
 		}
+		if (mode == TransferMode::WVK2)
+		{
+			snprintf(sizeBuffer, sizeof(sizeBuffer), "%llu", (unsigned long long)originalSize);
+			header += "ENCODING=gzip\nORIGINAL_SIZE=";
+			header += sizeBuffer;
+			header += "\nORIGINAL_SHA256=";
+			header += originalSha256;
+			header += '\n';
+		}
 		header += '\n';
 		if (total == 0U)
 		{
@@ -901,7 +927,7 @@ void handleTransferStart()
 		if (!queueOne(header, transfer.delayMs))
 		{
 			transfer.state = TransferState::ERROR_STATE;
-			strlcpy(transfer.error, "WVK1 헤더를 큐에 넣을 수 없습니다", sizeof(transfer.error));
+			strlcpy(transfer.error, "WVK 헤더를 큐에 넣을 수 없습니다", sizeof(transfer.error));
 			sendJsonError(500, transfer.error);
 			return;
 		}
@@ -916,7 +942,7 @@ void handleTransferStart()
 }
 
 // POST /transfer/chunk
-// Form fields: id, index (or seq), data, and crc32 for WVK1. A text/plain body
+// Form fields: id, index (or seq), data, and crc32 for WVK1/WVK2. A text/plain body
 // may be used instead of `data`; the other fields can then be query arguments.
 void handleTransferChunk()
 {

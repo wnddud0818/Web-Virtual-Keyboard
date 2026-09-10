@@ -42,6 +42,22 @@ void start(const char* id, const char* mode = "raw") {
 }
 void finishTyping() { while (hidTypingBusy()) { serviceHttpJobs(); fakeMillis += 100; } }
 
+std::string typedText() {
+    const uint8_t keys[128][2] = { HID_ASCII_TO_KEYCODE };
+    std::string text;
+    for (const auto& report : USBHID::attempts) {
+        if (!report.keycode[0]) continue;
+        bool found = false;
+        for (size_t c = 0; c < 128; ++c) {
+            if (keys[c][1] == report.keycode[0] && report.modifier == (keys[c][0] ? 2 : 0)) {
+                text += static_cast<char>(c); found = true; break;
+            }
+        }
+        assert(found);
+    }
+    return text;
+}
+
 int main() {
     const char* id = "0123456789abcdef0123456789abcdef";
     const char* other = "fedcba9876543210fedcba9876543210";
@@ -79,6 +95,35 @@ int main() {
     const size_t finishedReports = USBHID::attempts.size();
     start(id, "wvk1"); assert(server.status == 200);
     assert(USBHID::attempts.size() == finishedReports); // lost final response cannot replay
+
+    // WVK2 requires both hashes and original size before any USB reports.
+    const char* sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    for (const char* missing : {"sha256", "originalSize", "originalSha256"}) {
+        reset();
+        request({{"id", id}, {"mode", "wvk2"}, {"filename", "test.txt"}, {"size", "3"}, {"chunks", "1"},
+                 {"sha256", sha}, {"originalSize", "100"}, {"originalSha256", sha}});
+        server.args.erase(missing);
+        handleTransferStart();
+        assert(server.status == 400 && USBHID::attempts.empty());
+    }
+    reset();
+    request({{"id", id}, {"mode", "wvk2"}, {"filename", "test.txt"}, {"size", "3"}, {"chunks", "1"},
+             {"sha256", sha}, {"originalSize", "100"}, {"originalSha256", sha}, {"delayMs", "0"}});
+    handleTransferStart(); assert(server.status == 202);
+    assert(transfer.mode == TransferMode::WVK2);
+    assert(server.body.find("wvk2") != std::string::npos);
+    const size_t compressedHeaderChars = hidTypingRemaining();
+    handleTransferStart(); assert(server.status == 200);
+    assert(hidTypingRemaining() == compressedHeaderChars);
+    finishTyping();
+    std::string expectedHeader = std::string("WVK2\nNAME=test.txt\nSIZE=3\nCHUNKS=1\nSHA256=") + sha +
+        "\nENCODING=gzip\nORIGINAL_SIZE=100\nORIGINAL_SHA256=" + sha + "\n\n";
+    assert(typedText() == expectedHeader);
+    request({{"id", id}, {"index", "0"}, {"data", "YWJj"}, {"crc32", "352441C2"}});
+    handleTransferChunk(); assert(server.status == 202);
+    finishTyping();
+    assert(typedText() == expectedHeader + "C|000001|352441C2|YWJj\nEND\n");
+    assert(transfer.state == TransferState::COMPLETE && transfer.next == 1);
 
     // A cancel delivered before its start prevents the late start from typing.
     reset(); request({{"id", id}}); handleTransferCancel(); assert(server.status == 200);

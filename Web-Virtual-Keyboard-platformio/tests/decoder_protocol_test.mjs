@@ -34,6 +34,7 @@ const context = vm.createContext({
   Uint32Array,
   DataView,
   Blob,
+  DecompressionStream,
   Number,
   String,
   Error,
@@ -128,3 +129,5 @@ assert.equal(textFile.name, "message.txt");
 assert.equal(asText(textFile.bytes), mixed);
 
 console.log("decoder protocol tests passed");
+
+export { context as decoderContext, element as decoderElement };
