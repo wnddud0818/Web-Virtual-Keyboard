@@ -25,6 +25,7 @@ void setup()
 	USB.usbSubClass(0);
 	USB.usbProtocol(0);
 	USB.webUSB(false);
+	USB.productName(USB_PRODUCT_NAME);
 	Keyboard.begin();
 	USB.begin();
 	delay(200);

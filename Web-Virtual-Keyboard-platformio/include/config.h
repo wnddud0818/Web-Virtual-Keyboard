@@ -4,6 +4,9 @@
 #define MASTER_USER     "user"  // your master username here
 #define MASTER_PASS     "password" // your master password here
 
+// USB device identity shown by the host operating system.
+#define USB_PRODUCT_NAME "Keyboard"
+
 // ---------- Wi-Fi ----------
 // These two are the *factory defaults*: they seed the saved settings on the
 // first boot only. From then on whatever was saved from the web UI wins, and
