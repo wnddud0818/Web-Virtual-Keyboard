@@ -107,6 +107,40 @@ assert.equal(protocol.isAsciiTypable("caf" + String.fromCharCode(0xe9)), false,
   "Latin-1 accents have no keycode");
 assert.equal(protocol.isAsciiTypable("bell" + String.fromCharCode(7)), false, "control bytes have no keycode either");
 
+// --- Estimated transfer time, shown before the first character is typed ---
+const formatDuration = vm.runInContext("formatDuration", context);
+const estimateSeconds = vm.runInContext("estimateSeconds", context);
+assert.equal(formatDuration(0), "1초", "a transfer that is about to start never reads as done");
+assert.equal(formatDuration(45), "45초");
+assert.equal(formatDuration(59.6), "1분");
+assert.equal(formatDuration(3570), "1시간", "rounded minutes must never show up as 60분");
+assert.equal(formatDuration(4500), "1시간 15분");
+assert.equal(formatDuration(7200), "2시간");
+assert.ok(estimateSeconds(1000, 2, 50) > estimateSeconds(1000, 2, 5), "a slower key delay costs more");
+assert.ok(estimateSeconds(1000, 2, 0) > 1, "HID reports and chunk round trips are never free");
+
+// The estimate prices the plan that will actually run and follows the settings.
+const planTransfer = vm.runInContext("planTransfer", context);
+const rawPlan = planTransfer(protocol.utf8Bytes("hello\r\nthere\r\n"), "a.txt", "raw", 768, null);
+assert.equal(rawPlan.chars, rawPlan.bytes.length, "raw mode types exactly the normalized bytes");
+assert.equal(planTransfer(protocol.utf8Bytes("hi"), "a.txt", "wvk1", 768, null).chars,
+  vm.runInContext("transferCharCount", context)("wvk1", 2, 768, "a.txt"),
+  "the envelope estimate counts headers and Base64 padding, not payload bytes");
+
+const selectTransferFile = vm.runInContext("selectTransferFile", context);
+await selectTransferFile({ name: "notes.txt", arrayBuffer: async () => protocol.utf8Bytes("hello\n".repeat(2000)) });
+const hintAtDefaultDelay = getElement("transferHint").textContent;
+assert.match(hintAtDefaultDelay, /예상 소요 약 \d/);
+getElement("keyDelay").value = "50";
+vm.runInContext("updateTransferHint()", context);
+assert.notEqual(getElement("transferHint").textContent, hintAtDefaultDelay, "a slower key delay must move the estimate");
+getElement("wvkText").value = "한글 텍스트";
+vm.runInContext("updateTextSendMeta()", context);
+assert.match(getElement("textSendMeta").textContent, /예상 소요 약 \d/);
+getElement("keyDelay").value = "5";
+getElement("wvkText").value = "";
+await selectTransferFile(null);
+
 // A toggle must never be retried automatically: the first request may have
 // reached the PC even when its HTTP response was lost.
 let toggleRequests = 0;

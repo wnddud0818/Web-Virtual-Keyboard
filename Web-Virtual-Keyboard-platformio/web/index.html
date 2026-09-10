@@ -498,7 +498,7 @@ input.invalid, textarea.invalid {
 						<span class="field-label">키 간격 (ms)</span>
 						<input id="keyDelay" type="number" min="0" max="100" step="1" value="5" inputmode="numeric">
 					</label>
-					<div id="transferHint" class="transfer-hint small wide">파일을 선택하면 적용될 모드가 표시됩니다.</div>
+					<div id="transferHint" class="transfer-hint small wide">파일을 선택하면 적용될 모드와 예상 소요 시간이 표시됩니다.</div>
 				</div>
 			</div>
 
@@ -815,20 +815,48 @@ function transferCharCount(mode, size, chunkBytes, filename, originalSize = 0) {
 	return chars;
 }
 
+// Wall-clock estimate. Every character waits the configured key delay and the
+// two HID reports (press, release) the device sends on 1 ms USB frames; every
+// chunk adds an upload, the 180 ms status poll interval and its request.
+const KEY_REPORT_MS = 2;
+const CHUNK_ROUND_TRIP_MS = 250;
+
+function estimateSeconds(chars, chunks, delayMs) {
+	return (chars * (delayMs + KEY_REPORT_MS) + chunks * CHUNK_ROUND_TRIP_MS) / 1000;
+}
+
+function formatDuration(seconds) {
+	const total = Math.max(1, Math.round(seconds));
+	if (total < 60) { return total + "초"; }
+	const minutes = Math.round(total / 60);
+	if (minutes < 60) { return minutes + "분"; }
+	const rest = minutes % 60;
+	return Math.floor(minutes / 60) + "시간" + (rest ? " " + rest + "분" : "");
+}
+
+// The plan already knows the exact typed length, so the hint can price it.
+function estimateNote(chars, byteLength, chunkBytes, delayMs) {
+	return " · 예상 소요 약 " +
+		formatDuration(estimateSeconds(chars, Math.ceil(byteLength / chunkBytes), delayMs));
+}
+
 function planTransfer(bytes, filename, requestedMode, chunkBytes, compressed) {
 	const mode = requestedMode === "auto" ? (isRawSafe(bytes) ? "raw" : "wvk1") : requestedMode;
 	const plain = mode === "raw" ? normalizeRawBytes(bytes) : bytes;
-	if (requestedMode === "raw") { return { mode, bytes: plain, note: "원문 텍스트 - 압축 없이 직접 타이핑" }; }
+	if (requestedMode === "raw") {
+		return { mode, bytes: plain, chars: transferCharCount(mode, plain.length, chunkBytes, filename),
+			note: "원문 텍스트 - 압축 없이 직접 타이핑" };
+	}
 	const before = transferCharCount(mode, plain.length, chunkBytes, filename);
 	if (compressed && compressed.bytes && compressed.bytes.length < bytes.length) {
 		const after = transferCharCount("wvk2", compressed.bytes.length, chunkBytes, filename, bytes.length);
 		if (after < before) {
-			return { mode: "wvk2", bytes: compressed.bytes,
+			return { mode: "wvk2", bytes: compressed.bytes, chars: after,
 				note: "자동 압축: " + formatBytes(bytes.length) + " → " + formatBytes(compressed.bytes.length) +
 				" · 입력량 " + ((1 - after / before) * 100).toFixed(1) + "% 감소 · 최신 디코더 필요" };
 		}
 	}
-	return { mode, bytes: plain, note: compressed && compressed.unavailable ?
+	return { mode, bytes: plain, chars: before, note: compressed && compressed.unavailable ?
 		"브라우저에서 압축을 사용할 수 없어 기존 방식으로 전송합니다." : "압축해도 입력량이 줄지 않아 기존 방식으로 전송합니다." };
 }
 
@@ -850,7 +878,7 @@ function safeFilename(name) {
 
 function updateTransferHint() {
 	if (!selectedFile || !selectedBytes) {
-		transferHint.textContent = "파일을 선택하면 적용될 모드가 표시됩니다.";
+		transferHint.textContent = "파일을 선택하면 적용될 모드와 예상 소요 시간이 표시됩니다.";
 		transferHint.className = "transfer-hint small wide";
 		startTransfer.disabled = true;
 		return;
@@ -858,15 +886,18 @@ function updateTransferHint() {
 
 	const requestedMode = resolvedTransferMode();
 	const rawForcedOnBinary = requestedMode === "raw" && !selectedIsRaw;
+	const chunkBytes = clampNumber(chunkSizeInput.value, 96, 1536, 768);
 	const plan = planTransfer(selectedBytes, safeFilename(selectedFile.name), requestedMode,
-		clampNumber(chunkSizeInput.value, 96, 1536, 768), selectedCompression);
+		chunkBytes, selectedCompression);
+	const eta = estimateNote(plan.chars, plan.bytes.length, chunkBytes,
+		clampNumber(keyDelayInput.value, 0, 100, 5));
 	transferHint.className = "transfer-hint small wide" + (rawForcedOnBinary ? " transfer-warning" : "");
 	if (rawForcedOnBinary) {
 		transferHint.textContent = "원문 모드는 US-ASCII 텍스트(및 탭·줄바꿈)만 지원합니다. 자동 또는 파일 복원 모드를 선택하세요.";
 	} else if (plan.mode === "raw") {
-		transferHint.textContent = "원문 텍스트 - 대상 편집기를 포커스하세요. " + plan.note;
+		transferHint.textContent = "원문 텍스트 - 대상 편집기를 포커스하세요. " + plan.note + eta;
 	} else {
-		transferHint.textContent = "파일 복원 - 대상 디코더 입력창을 포커스하세요. " + plan.note;
+		transferHint.textContent = "파일 복원 - 대상 디코더 입력창을 포커스하세요. " + plan.note + eta;
 	}
 	startTransfer.disabled = transferBusy || !!activeTransfer || rawForcedOnBinary;
 }
@@ -881,9 +912,11 @@ function updateTextSendMeta() {
 	}
 	const bytes = utf8Bytes(value).length;
 	const chunkBytes = clampNumber(chunkSizeInput.value, 96, 1536, 768);
+	const eta = estimateNote(transferCharCount("wvk1", bytes, chunkBytes, "message.txt"),
+		bytes, chunkBytes, clampNumber(keyDelayInput.value, 0, 100, 5));
 	textSendMeta.className = "small";
 	textSendMeta.textContent = value.length + "자 - UTF-8 " + formatBytes(bytes) +
-		" - 압축 전 청크 " + Math.ceil(bytes / chunkBytes) + "개 · 전송 시 자동 압축" +
+		" - 압축 전 청크 " + Math.ceil(bytes / chunkBytes) + "개" + eta + " · 전송 시 자동 압축되면 더 짧아집니다" +
 		(isAsciiTypable(value) ? "" : " - ASCII 외 문자 포함, 디코더 필요");
 	sendTextWvk.disabled = transferBusy || !!activeTransfer;
 }
@@ -1353,7 +1386,7 @@ async function typeDecoderSource() {
 fileInput.addEventListener("change", () => selectTransferFile(fileInput.files && fileInput.files[0]));
 transferMode.addEventListener("change", updateTransferHint);
 chunkSizeInput.addEventListener("change", () => { updateTransferHint(); updateTextSendMeta(); });
-keyDelayInput.addEventListener("change", updateTransferHint);
+keyDelayInput.addEventListener("change", () => { updateTransferHint(); updateTextSendMeta(); });
 startTransfer.addEventListener("click", beginSelectedTransfer);
 stopTransfer.addEventListener("click", stopActiveTransfer);
 resumeTransfer.addEventListener("click", resumeActiveTransfer);
