@@ -61,6 +61,13 @@
 #define SERVER_PORT     80
 #define UART_NUMBER     0
 
+// The firmware is never CPU-bound: it serves a small HTTP UI and types one
+// character per loop, never sooner than DEFAULT_CHAR_DELAY_MS apart. 240 MHz
+// buys nothing and only adds heat inside the dongle's sealed case. Keep this
+// at 80 or above: Wi-Fi needs it, and below 80 the APB clock follows the CPU
+// and takes the UART baud rate and the display SPI with it.
+#define CPU_FREQ_MHZ    160
+
 #define ENABLE_DISPLAY  true
 
 #endif

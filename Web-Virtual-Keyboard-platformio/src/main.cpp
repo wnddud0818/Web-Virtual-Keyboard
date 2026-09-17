@@ -14,6 +14,11 @@
 // ---------- Setup / Loop ----------
 void setup()
 {
+	// Before anything else is configured, so no peripheral is set up against a
+	// clock that is about to change. At 160 MHz the APB clock stays at 80 MHz,
+	// so the UART baud rate and the display SPI are unaffected.
+	setCpuFrequencyMhz(CPU_FREQ_MHZ);
+
 	// UART for logging over an external USB-UART adapter (not CDC)
 	LogSerial.begin(UART_BAUD, SERIAL_8N1, UART_RX_PIN, UART_TX_PIN);
 	delay(100);
@@ -81,4 +86,10 @@ void loop()
 	server.handleClient();
 	serviceHttpJobs();
 	wifiService();
+
+	// Hand the core back to FreeRTOS. Every call above returns immediately
+	// when there is nothing to do, so without this the loop task spins at 100%
+	// and heats the case for no work. One tick costs no throughput: the typing
+	// engine paces itself on millis(), not on how often this loop runs.
+	delay(1);
 }
