@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>HID Desk · CH9329 키보드 & 마우스</title>
+<link rel="stylesheet" href="styles.css">
+<script src="protocol.js" defer></script>
+<script src="ch340-usb.js" defer></script>
+<script src="transfer.js" defer></script>
+<script src="decoder-source.js" defer></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <a class="brand" href="#"><span class="brand-mark" aria-hidden="true">H</span><span>HID Desk<small>LOCAL CONTROL</small></span></a>
+    <div class="side-label">작업 공간</div>
+    <nav aria-label="작업 화면">
+      <button class="nav-item active" data-tab="keyboard" aria-current="page"><span aria-hidden="true">⌨</span>키보드<span class="nav-no">01</span></button>
+      <button class="nav-item" data-tab="mouse"><span aria-hidden="true">↖</span>마우스<span class="nav-no">02</span></button>
+      <button class="nav-item" data-tab="files"><span aria-hidden="true">⇧</span>파일 전송<span class="nav-no">03</span></button>
+      <button class="nav-item" data-tab="settings"><span aria-hidden="true">⚙</span>장치 설정<span class="nav-no">04</span></button>
+    </nav>
+    <div class="side-bottom"><span class="offline-dot"></span>오프라인으로, 내 컴퓨터에서.<p>별도 서버 없이 실행됩니다.<br>CH9329 + CH340 USB 케이블</p><a href="README.md" target="_blank">사용 안내 ↗</a></div>
+  </aside>
+  <main>
+    <header class="topbar"><span>Web Virtual Keyboard <span class="slash">/</span> <strong id="pageTitle">키보드</strong></span><span class="local-label">◉ LOCAL ONLY</span></header>
+    <section class="intro"><div><div class="eyebrow">YOUR OTHER COMPUTER, WITHIN REACH</div><h1>작은 케이블, 자유로운 입력.</h1><p>이 컴퓨터에서 보내고, 연결된 컴퓨터에서 입력하세요.</p></div><span class="version">CH9329 EDITION <b>01</b></span></section>
+    <section class="connection card" aria-label="장치 연결">
+      <div class="device-icon" aria-hidden="true">⇄</div><div class="connection-copy"><h2 id="connectionTitle">케이블을 연결해 주세요</h2><p id="connectionDetail">CH340 → 이 기기 · CH9329 → 입력받을 컴퓨터</p></div>
+      <span id="connectionBadge" class="badge">연결 안 됨</span>
+      <label class="compact">통신 속도<select id="baud"><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option>115200</option></select></label>
+      <button id="connect" class="primary">케이블 연결 <span>↗</span></button><button id="disconnect" class="secondary" hidden>연결 해제</button>
+    </section>
+    <div id="supportNote" class="notice" hidden></div>
+    <div id="connectionError" class="notice" role="alert" hidden></div>
+    <div id="inputModeNote" class="notice" role="status" hidden></div>
+    <div class="workspace">
+      <div class="primary-column">
+        <section id="panel-keyboard" class="panel" data-input="keyboard">
+          <div class="card text-card"><div class="card-heading"><div><span class="eyebrow">01 / TYPE</span><h2>텍스트 보내기</h2></div><span class="quiet-pill">US 키보드</span></div>
+            <label for="text" class="sr-only">전송할 텍스트</label><textarea id="text" placeholder="보낼 내용을 입력하세요.&#10;영문·숫자·기호는 바로, 한글은 디코더로 보낼 수 있어요." spellcheck="false"></textarea>
+            <div class="text-meta"><span id="charCount">0자</span><label class="check"><input id="appendEnter" type="checkbox">끝에 Enter 추가</label></div>
+            <div class="action-row"><button id="sendText" class="primary" data-device>텍스트 전송 <span>↗</span></button><button id="sendUnicode" class="secondary" data-device>디코더로 보내기</button></div>
+            <p class="hint">대상 PC는 영문 입력 상태, Caps Lock 끄기. 전송할 입력창을 먼저 선택하세요.</p>
+          </div>
+          <div class="card"><div class="card-heading"><div><span class="eyebrow">QUICK KEYS</span><h2>키 & 단축키</h2></div><button id="ime" class="text-button" data-device>Windows 한/영 전환 ⇄</button></div>
+            <div class="quick-keys" id="quickKeys"></div>
+            <div class="shortcut-row"><label for="shortcut">직접 조합</label><input id="shortcut" value="CTRL+SHIFT+S" placeholder="CTRL+ALT+DEL"><button id="sendShortcut" class="secondary" data-device>보내기 ↗</button></div>
+            <p class="hint">CTRL · SHIFT · ALT · WIN · F1–F12를 +로 연결하세요. 한/영 전환은 오른쪽 Alt를 보냅니다.</p>
+          </div>
+          <div class="card"><div class="card-heading"><div><span class="eyebrow">SAVED FOR LATER</span><h2>내 프리셋</h2></div><button id="exportPresets" class="text-button">내보내기 ↓</button></div>
+            <div id="presets" class="preset-list"></div>
+            <details class="preset-editor"><summary>＋ 프리셋 추가 / 가져오기</summary><label>이름<input id="presetName" maxlength="60" placeholder="예: 자주 쓰는 문구"></label><label>종류<select id="presetKind"><option value="text">텍스트 (직접 입력)</option><option value="unicode">텍스트 (디코더로 복원)</option><option value="shortcut">단축키</option></select></label><label>내용<textarea id="presetValue" rows="2" placeholder="텍스트 또는 CTRL+C 같은 단축키"></textarea></label><div class="action-row"><button id="savePreset" class="secondary">프리셋 저장</button><label class="file-button">가져오기<input type="file" id="importPresets" accept="application/json,.json"></label></div></details>
+            <p class="hint" id="storageHint">프리셋은 이 브라우저에 평문으로 저장됩니다. 폴더를 옮기기 전 내보내기로 보관하세요.</p>
+          </div>
+        </section>
+        <section id="panel-mouse" class="panel" data-input="mouse" hidden>
+          <div class="card"><div class="card-heading"><div><span class="eyebrow">02 / POINT</span><h2>마우스 움직이기</h2></div><span class="quiet-pill">상대 이동</span></div>
+            <div class="mouse-controls"><div class="dpad"><button data-move="0,-1" aria-label="위로 이동" data-device>↑</button><button data-move="-1,0" aria-label="왼쪽으로 이동" data-device>←</button><span aria-hidden="true">✥</span><button data-move="1,0" aria-label="오른쪽으로 이동" data-device>→</button><button data-move="0,1" aria-label="아래로 이동" data-device>↓</button></div><div><label>한 번에 이동할 거리<input type="range" id="mouseStep" min="1" max="127" value="30"></label><p><b id="stepLabel">30</b> 단계</p><p class="hint">실제 이동 거리는 대상 PC의<br>마우스 가속 설정에 따라 달라집니다.</p></div></div>
+            <div class="mouse-buttons"><button data-click="1" data-device>왼쪽 클릭</button><button id="doubleClick" data-device>더블 클릭</button><button data-click="2" data-device>오른쪽 클릭</button><button data-click="4" data-device>가운데 클릭</button><button data-wheel="1" data-device>스크롤 ↑</button><button data-wheel="-1" data-device>스크롤 ↓</button></div>
+          </div>
+          <div class="card"><div class="card-heading"><div><span class="eyebrow">ABSOLUTE POSITION</span><h2>지정 위치로 이동</h2></div></div><div class="coordinate-grid"><label>가로 위치 (%)<input id="mouseX" type="number" min="0" max="100" value="50"></label><label>세로 위치 (%)<input id="mouseY" type="number" min="0" max="100" value="50"></label><button id="absoluteMove" class="primary" data-device>위치로 이동 ↗</button></div><p class="hint">대상 PC의 화면 영역 기준입니다. 다중 모니터나 일부 환경에서는 좌표 동작이 다를 수 있습니다.</p></div>
+        </section>
+        <section id="panel-files" class="panel" data-input="keyboard" hidden>
+          <div class="card"><div class="card-heading"><div><span class="eyebrow">03 / TRANSFER</span><h2>파일을 키보드로 보내기</h2></div><span class="quiet-pill">WVK1 / WVK2</span></div>
+            <label class="dropzone" id="dropzone"><span class="upload-icon">⇧</span><strong>파일을 놓거나 선택하세요</strong><span>텍스트, 코드, 이미지 등 · 최대 16 MiB</span><input id="fileInput" type="file"></label>
+            <div class="file-options"><label>전송 방식<select id="fileMode"><option value="encoded">파일 복원 / Base64 (자동 압축)</option><option value="raw">원문 텍스트 (ASCII만)</option></select></label><button id="prepareFile" class="secondary">전송 준비</button></div>
+            <div id="fileSummary" class="file-summary">파일을 선택하면 전송량과 예상 시간을 확인할 수 있어요.</div>
+            <button id="sendFile" class="primary" data-device disabled>파일 전송 ↗</button><p class="hint">파일 복원 모드는 대상 PC의 decoder.html 입력창을 선택하세요. 전송 완료 후 “검증하고 열기”를 누르면 원본을 복원합니다.</p>
+          </div>
+          <div class="card"><div class="card-heading"><div><span class="eyebrow">FIRST TIME SETUP</span><h2>대상 PC에 디코더 준비하기</h2></div></div><p class="body-copy">디코더는 인터넷 없이 파일을 복원하는 작은 HTML 파일입니다. 한글 텍스트도 원래대로 복원합니다.</p><div class="action-row"><button id="typeDecoder" class="primary" data-device>빠른 디코더 타이핑 ↗</button><button id="downloadDecoder" class="secondary">디코더 내려받기 ↓</button></div><p id="decoderSize" class="hint"></p><p class="hint">대상 PC의 빈 일반 텍스트 편집기를 선택하세요. 입력이 끝나면 decoder.html로 저장하고 Chrome / Edge에서 여세요. 내장된 압축 소스를 자동으로 풀어 디코더를 엽니다. 인터넷은 필요 없습니다.</p><details class="preset-editor"><summary>압축 설치를 지원하지 않는 브라우저</summary><p class="hint">전체 HTML 소스를 타이핑하는 기존 방법도 사용할 수 있습니다.</p><button id="typeFullDecoder" class="secondary" data-device>전체 소스 타이핑 ↗</button></details></div>
+        </section>
+        <section id="panel-settings" class="panel" hidden>
+          <div class="card"><div class="card-heading"><div><span class="eyebrow">04 / DEVICE</span><h2>장치 정보 & 부팅 설정</h2></div><button id="readConfig" class="secondary" data-device>설정 읽기 ↻</button></div>
+            <dl class="device-info" id="configInfo"><dt>장치</dt><dd>연결 후 설정을 읽어 주세요.</dd></dl>
+            <p class="body-copy">대상 PC에서 인식될 장치 종류를 선택하세요. 저장한 모드는 다음 전원 연결부터 적용됩니다. 최초 설정은 테스트 PC에서 마친 뒤 대상 PC에 연결하세요.</p>
+            <label class="mode-field">저장할 동작 모드<select id="operatingMode" aria-describedby="modeDescription modeCompatibility">
+              <option value="0">모드 0 · 키보드 + 마우스 + 사용자 정의 HID (공장 기본값)</option>
+              <option value="1" selected>모드 1 · 키보드만</option>
+              <option value="2">모드 2 · 키보드 + 마우스</option>
+              <option value="3">모드 3 · 사용자 정의 HID만</option>
+            </select></label>
+            <p id="modeDescription" class="body-copy" role="status">일반 USB HID 키보드만 인식합니다. 마우스·멀티미디어 키·사용자 정의 HID 기능은 제외됩니다.</p>
+            <div id="modeCompatibility" class="notice" hidden>최신 WCH 문서의 동작 모드 2는 키보드 + 마우스입니다. 구형 문서에는 설명 차이가 있으므로 제품 설명서의 모드 2 지원 여부를 먼저 확인하세요.</div>
+            <label class="check confirmation"><input id="modeConfirmed" type="checkbox"><span id="modeConfirmationText">제품 설명서에서 “모드 1 · 키보드만” 기능을 확인했습니다.</span></label>
+            <div class="action-row"><button id="saveMode" class="primary" data-device disabled>모드 1 저장</button><button id="backupConfig" class="secondary" disabled>현재 설정 백업 ↓</button></div>
+            <p class="hint">선택한 동작 모드를 소프트웨어 설정으로 저장합니다. 웹 연결에 필요한 시리얼 통신 모드는 프로토콜로 유지하며, 주소·속도·USB 식별 정보는 보존합니다.</p>
+            <p id="modeResult" class="hint" role="status">저장 후 양쪽 USB를 모두 분리하고 다시 연결하세요. 웹 화면에서는 대상 PC의 USB 인터페이스 목록을 확인할 수 없습니다.</p>
+          </div>
+          <div class="card"><div class="card-heading"><div><span class="eyebrow">TRANSFER SPEED</span><h2>케이블 전송 속도 올리기</h2></div></div><p class="body-copy">기본 9600 bps가 전송 속도를 제한합니다. 장치에 새 속도를 저장한 뒤 전원을 다시 연결하면 더 빠르게 통신할 수 있습니다.</p><div class="file-options"><label>장치에 저장할 속도<select id="deviceBaud"><option value="9600">9600 bps — 기본 / 복원</option><option value="19200">19200 bps</option><option value="38400">38400 bps</option><option value="57600" selected>57600 bps — 권장</option><option value="115200">115200 bps — 5V 동작 확인 필요</option></select></label><button id="saveBaud" class="primary" data-device>속도 저장</button></div><p class="hint">CH9329는 3.3V 동작 시 115200 bps를 지원하지 않습니다. 현재 동작·통신 모드 번호를 소프트웨어 설정으로 유지해 저장하며, HID 기능의 종류는 바꾸지 않습니다.</p><p id="baudResult" class="hint" role="status">위쪽 “통신 속도”만 바꾸면 장치의 속도는 바뀌지 않습니다. 먼저 여기에서 저장하고 양쪽 USB를 모두 분리한 뒤 다시 연결하세요.</p></div>
+          <div class="card"><h2>연결 도움말</h2><label class="address-field transport-field">연결 방식<select id="transport"><option value="auto" selected>자동</option><option value="serial">시리얼 포트 (Web Serial)</option><option value="usb">USB 직접 (WebUSB)</option></select></label><label class="address-field">장치 주소 (기본 0)<input id="address" type="number" min="0" max="254" value="0"></label><p class="body-copy">제어 기기에는 CH340 쪽을, 대상 PC에는 CH9329 쪽만 연결합니다. 데스크톱은 CH340 시리얼 포트가 필요하며, 포트가 보이지 않으면 USB 연결 방향과 CH340 드라이버를 확인하세요.</p><p class="body-copy">안드로이드(갤럭시 등) Chrome은 드라이버 없이 USB 직접 방식으로 연결합니다. OTG 젠더로 CH340 쪽을 휴대폰에 꽂고, USB 사용 권한 요청을 허용하세요.</p><p class="hint">이 화면은 장치 응답을 받는 프로토콜 통신 모드가 필요합니다. 판매자가 ASCII 모드로 설정한 제품은 먼저 제조사 도구로 통신 모드를 바꿔야 합니다.</p></div>
+        </section>
+      </div>
+      <aside class="status-column">
+        <section class="card session-card"><span class="eyebrow">SESSION</span><h2>전송 상태</h2><div class="session-orb" id="sessionOrb" aria-hidden="true">↗</div><strong id="jobTitle">다음 입력을 기다리는 중</strong><p id="jobDetail">케이블을 연결하면 시작할 수 있어요.</p><progress id="progress" value="0" max="100" aria-label="전송 진행률"></progress><div class="progress-meta"><span id="progressCount">0 / 0</span><b id="progressPercent">0%</b></div><button id="stop" class="stop-button" disabled>■ 전송 중지</button><p class="tiny">진행률은 장치의 전송 응답 기준입니다.<br>파일은 대상 디코더에서 최종 검증하세요.</p></section>
+        <section class="card pacing"><h2>입력 속도</h2><label>입력 방식<select id="typingMode"><option value="fast" selected>빠르게 · 대기 없이 연속 입력</option><option value="compatible">호환 · 한 글자씩 누르고 해제</option></select></label><label>키 사이 대기 시간<div class="number-unit"><input id="keyDelay" type="number" min="0" max="100" value="0"><span>ms</span></div></label><label>시작 전 대기<select id="startDelay"><option value="0">바로 시작</option><option value="3" selected>3초</option><option value="5">5초</option><option value="10">10초</option></select></label><p class="hint">대기 시간 동안 대상 PC의 입력창을 선택하세요. 입력이 빠지면 호환 모드로 바꾸세요. 빠른 입력 중에는 이 탭을 열어 두세요.</p></section>
+        <div class="connection-map"><span>보내는 PC</span><b>CH340</b><i>↓</i><b>CH9329</b><span>입력받는 PC · HID</span></div>
+      </aside>
+    </div>
+    <footer><span>HID Desk <b>·</b> Web Virtual Keyboard</span><span>내 파일은 이 브라우저 안에서만 처리됩니다.</span></footer>
+  </main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
