@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <esp_system.h>
 
 #include "config.h"
 #include "storage.h"
@@ -23,6 +24,7 @@ void setup()
 	LogSerial.begin(UART_BAUD, SERIAL_8N1, UART_RX_PIN, UART_TX_PIN);
 	delay(100);
 	LogSerial.print("\r\n=== Web Keyboard Server ===\r\n");
+	LogSerial.printf("[Boot] reset_reason=%d\r\n", (int)esp_reset_reason());
 
 	// A single HID keyboard interface identifies the device. Do not inherit
 	// Arduino's default miscellaneous/IAD (composite-device) class tuple.

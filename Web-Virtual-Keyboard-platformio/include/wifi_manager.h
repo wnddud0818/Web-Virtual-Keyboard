@@ -29,6 +29,30 @@ struct WifiSettings
 	String   apPass;
 };
 
+// Bounded RAM history survives client reconnects, but not a reboot.
+// Names point to static strings. On IDF 4.4 AP disconnect events have no
+// reason code: detail is the association ID for AP client events.
+struct WifiEventRecord
+{
+	const char* name = "";
+	uint32_t atMs = 0;
+	uint16_t detail = 0;
+};
+
+struct WifiDiagnostics
+{
+	uint32_t apStarts = 0;
+	uint32_t apStops = 0;
+	uint32_t clientConnects = 0;
+	uint32_t clientDisconnects = 0;
+	uint32_t ipAssignments = 0;
+	uint8_t eventCount = 0;
+	WifiEventRecord events[12];
+};
+
+// Thread-safe copy: Wi-Fi callbacks run on a different FreeRTOS task.
+WifiDiagnostics wifiDiagnostics();
+
 // Loads the settings from NVS (seeding them from config.h on the very first
 // boot) and brings the radio up. Call once at boot, after display_init().
 void wifiInit();

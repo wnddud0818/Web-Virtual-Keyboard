@@ -26,6 +26,9 @@
 #define AP_PASS_MIN_LEN 8   // WPA2 minimum; an open AP is never allowed
 #define AP_MAX_CLIENTS  4
 #define AP_CHANNEL      1
+// AP-only compatibility experiment: omit 802.11n/A-MPDU negotiation.
+// Set false to compare with b/g/n. Station connections are unaffected.
+#define AP_COMPATIBILITY_MODE true
 
 // Hold BOOT for this long while the firmware is running to force the access
 // point up (the escape hatch when the saved network is unreachable).
@@ -51,7 +54,7 @@
 #define UART_BAUD       115200
 #define HOSTNAME        "web-virtual-keyboard"
 
-#define FW_VERSION          "1.4.1"
+#define FW_VERSION          "1.4.2-ap-test"
 #define STORAGE_VERSION     "2.0"
 
 #define MAX_PRESET_LENGTH   64

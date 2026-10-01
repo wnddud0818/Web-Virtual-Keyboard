@@ -2,6 +2,7 @@
 
 #include <WiFi.h>
 #include <Preferences.h>
+#include <esp_wifi.h>
 
 #if __has_include(<esp_random.h>)
 	#include <esp_random.h>
@@ -31,6 +32,67 @@ static WifiState    activeState     = WifiState::DOWN;
 static bool         restartPending  = false;
 static uint32_t     restartAt       = 0;
 static uint32_t     buttonDownSince = 0;
+static WifiDiagnostics diagnostics;
+static portMUX_TYPE diagnosticsMux = portMUX_INITIALIZER_UNLOCKED;
+
+// Never draw the display or change radio mode from an event callback.
+static void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info)
+{
+	const char* name = nullptr;
+	uint16_t detail = 0;
+	uint32_t* counter = nullptr;
+	switch (event)
+	{
+		case ARDUINO_EVENT_WIFI_AP_START:
+			name = "ap_start"; counter = &diagnostics.apStarts; break;
+		case ARDUINO_EVENT_WIFI_AP_STOP:
+			name = "ap_stop"; counter = &diagnostics.apStops; break;
+		case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
+			name = "client_connected"; counter = &diagnostics.clientConnects;
+			detail = info.wifi_ap_staconnected.aid; break;
+		case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
+			name = "client_disconnected"; counter = &diagnostics.clientDisconnects;
+			detail = info.wifi_ap_stadisconnected.aid; break;
+		case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
+			name = "client_ip_assigned"; counter = &diagnostics.ipAssignments; break;
+		case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+			name = "sta_disconnected";
+			detail = info.wifi_sta_disconnected.reason; break;
+		case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+			name = "sta_got_ip"; break;
+		default:
+			return;
+	}
+
+	const uint32_t atMs = millis();
+	portENTER_CRITICAL(&diagnosticsMux);
+	if (counter) { ++*counter; }
+	const uint8_t capacity = sizeof(diagnostics.events) / sizeof(diagnostics.events[0]);
+	if (diagnostics.eventCount == capacity)
+	{
+		for (uint8_t i = 1; i < capacity; ++i)
+		{
+			diagnostics.events[i - 1] = diagnostics.events[i];
+		}
+		--diagnostics.eventCount;
+	}
+	WifiEventRecord& record = diagnostics.events[diagnostics.eventCount++];
+	record.name = name;
+	record.atMs = atMs;
+	record.detail = detail;
+	portEXIT_CRITICAL(&diagnosticsMux);
+
+	LogSerial.printf("[WiFi] t=%lu %s detail=%u\r\n",
+		(unsigned long)atMs, name, (unsigned int)detail);
+}
+
+WifiDiagnostics wifiDiagnostics()
+{
+	portENTER_CRITICAL(&diagnosticsMux);
+	WifiDiagnostics snapshot = diagnostics;
+	portEXIT_CRITICAL(&diagnosticsMux);
+	return snapshot;
+}
 
 // ---------- Defaults ----------
 
@@ -230,7 +292,22 @@ static bool startAp()
 		settings.apSsid = defaultApSsid();
 	}
 
-	WiFi.mode(WIFI_MODE_AP);
+	if (!WiFi.mode(WIFI_MODE_AP))
+	{
+		activeState = WifiState::DOWN;
+		LogSerial.print("[WiFi] could not enable AP mode\r\n");
+		return false;
+	}
+
+	// Avoid 802.11n aggregation negotiation in this compatibility experiment.
+	// Apply only to AP, before configuring the SSID clients will connect to.
+	const uint8_t protocol = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G |
+		(AP_COMPATIBILITY_MODE ? 0 : WIFI_PROTOCOL_11N);
+	const esp_err_t protocolResult = esp_wifi_set_protocol(WIFI_IF_AP, protocol);
+	const esp_err_t bandwidthResult = esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20);
+	LogSerial.printf("[WiFi] AP protocol=%s (%s), bandwidth=20MHz (%s)\r\n",
+		AP_COMPATIBILITY_MODE ? "b/g" : "b/g/n", esp_err_to_name(protocolResult),
+		esp_err_to_name(bandwidthResult));
 
 	const bool ok = WiFi.softAP(settings.apSsid.c_str(), settings.apPass.c_str(),
 								AP_CHANNEL, 0 /* not hidden */, AP_MAX_CLIENTS);
@@ -252,6 +329,7 @@ static bool startAp()
 
 void wifiInit()
 {
+	WiFi.onEvent(onWifiEvent);
 	loadSettings();
 
 #if ENABLE_RECOVERY_BUTTON

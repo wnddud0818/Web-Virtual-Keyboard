@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <esp_system.h>
+#include <esp_wifi.h>
 #include <cstdio>
 #include <cstring>
 #include "globals.h"
@@ -1155,6 +1156,25 @@ void handleGetWifi()
 	out["ssid"]      = wifiActiveSsid();
 	out["ip"]        = wifiActiveIp();
 	out["ap_min_pass"] = AP_PASS_MIN_LEN;
+	out["uptime_ms"] = millis();
+	out["reset_reason"] = (int)esp_reset_reason();
+	out["free_heap"] = ESP.getFreeHeap();
+
+	const WifiDiagnostics snapshot = wifiDiagnostics();
+	JsonObject diagnostic = out["diagnostics"].to<JsonObject>();
+	diagnostic["ap_starts"] = snapshot.apStarts;
+	diagnostic["ap_stops"] = snapshot.apStops;
+	diagnostic["client_connects"] = snapshot.clientConnects;
+	diagnostic["client_disconnects"] = snapshot.clientDisconnects;
+	diagnostic["ip_assignments"] = snapshot.ipAssignments;
+	JsonArray events = diagnostic["events"].to<JsonArray>();
+	for (uint8_t i = 0; i < snapshot.eventCount; ++i)
+	{
+		JsonObject entry = events.add<JsonObject>();
+		entry["event"] = snapshot.events[i].name;
+		entry["at_ms"] = snapshot.events[i].atMs;
+		entry["detail"] = snapshot.events[i].detail;
+	}
 
 	switch (state)
 	{
@@ -1164,9 +1184,18 @@ void handleGetWifi()
 			break;
 
 		case WifiState::AP:
+		{
 			out["active"]  = "ap";
 			out["clients"] = WiFi.softAPgetStationNum();
+			out["channel"] = WiFi.channel();
+			uint8_t protocol = 0;
+			if (esp_wifi_get_protocol(WIFI_IF_AP, &protocol) == ESP_OK)
+			{
+				out["protocol_bitmap"] = protocol;
+				out["compatibility_mode"] = (protocol & WIFI_PROTOCOL_11N) == 0;
+			}
 			break;
+		}
 
 		default:
 			out["active"] = "down";
