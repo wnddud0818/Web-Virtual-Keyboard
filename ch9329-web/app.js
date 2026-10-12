@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
-  const { SerialClient, shortcut, normalizeText, textReports, textReportCount } = CH9329;
+  const { SerialClient, shortcut, normalizeText, textReports, textReportCount, normalizeKoreanText, koreanTextReports } = CH9329;
   const storeKey = 'wvk.ch9329.presets.v1', baudKey = 'wvk.ch9329.baud', transportKey = 'wvk.ch9329.transport';
   const operatingModes = [
     { name:'키보드 + 마우스 + 사용자 정의 HID', keyboard:true, mouse:true, description:'키보드·마우스·사용자 정의 HID가 함께 인식되는 복합 장치입니다. 공장 기본 모드이며 멀티미디어 키도 포함합니다.' },
@@ -55,6 +55,7 @@
     $('prepareFile').disabled = busy || !selectedFile;
     $('keyDelay').disabled = busy || $('typingMode').value === 'fast'; $('startDelay').disabled = busy;
     $('typingMode').disabled = busy;
+    $('textMode').disabled = busy;
     $('sessionOrb').classList.toggle('busy', busy);
     const badge = $('connectionBadge');
     badge.textContent = client.connected ? (info?.usb ? '연결됨' : '대상 PC 확인') : '연결 안 됨';
@@ -106,17 +107,18 @@
       notify(error.message, error.name !== 'AbortError');
     } finally { busy = false; aborter = null; sync(); }
   }
-  async function transmit(value, signal) {
-    const text = normalizeText(value);
+  async function transmit(value, signal, mixed = false) {
+    const text = mixed ? normalizeKoreanText(value) : normalizeText(value);
     if (!text.length) throw new Error('보낼 내용을 입력해 주세요.');
     const fast = $('typingMode').value === 'fast';
     const delay = fast ? 0 : Math.max(0, Math.min(100, Number($('keyDelay').value) || 0));
-    let done = 0, lastPaint = 0; const started = performance.now();
+    let done = 0, lastPaint = 0, ime = 'english'; const started = performance.now();
     progress(0, text.length);
     try {
-      for (const report of textReports(text, fast)) {
+      for (const report of mixed ? koreanTextReports(text, fast) : textReports(text, fast)) {
         check(signal);
         await client.keyboard(report.modifier, report.keys);
+        if (report.ime) ime = report.ime;
         done += report.advance;
         if (done === text.length || performance.now() - lastPaint > 80) {
           progress(done, text.length); lastPaint = performance.now();
@@ -125,11 +127,23 @@
           $('jobDetail').textContent = `초당 ${rate.toFixed(1)}자 · 남은 시간 약 ${duration(remaining / 1000)}`;
         }
         if (delay && report.advance) await pause(delay, signal);
+        if (report.wait) await pause(report.wait, signal);
       }
     } finally {
-      if (client.connected) await client.keyboard();
+      if (client.connected) {
+        await client.keyboard();
+        // On cancellation, commit any partial composition and restore the
+        // assumed English mode. A lost connection cannot restore IME state.
+        if (mixed && ime === 'korean') {
+          // Let an in-flight IME switch settle even if cancellation happened
+          // during its normal wait, before sending the inverse toggle.
+          await new Promise(resolve => setTimeout(resolve, 100));
+          await client.tap(64, []);
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
     }
-    return `${done.toLocaleString()}자 전송 응답을 받았습니다. 대상 PC에서 결과를 확인하세요.`;
+    return `${done.toLocaleString()}자 전송 응답을 받았습니다. 대상 PC에서 결과를 확인하세요.${mixed ? ' 한/영 전환은 영문(A) 상태로 마쳤습니다.' : ''}`;
   }
   $('typingMode').addEventListener('change', () => {
     $('keyDelay').value = $('typingMode').value === 'fast' ? '0' : '5'; sync(); renderFileSummary();
@@ -196,13 +210,26 @@
     $('pageTitle').textContent = { keyboard:'키보드', mouse:'마우스', files:'파일 전송', settings:'장치 설정' }[button.dataset.tab];
   }));
   $('text').addEventListener('input', () => { $('charCount').textContent = $('text').value.length.toLocaleString() + '자'; });
-  $('sendText').addEventListener('click', () => {
+  function sendDirect(value, mixed = false, appendEnter = false) {
     let text;
-    try { text = normalizeText($('text').value); if (!text) throw new Error('보낼 내용을 입력해 주세요.'); }
+    try { text = mixed ? normalizeKoreanText(value) : normalizeText(value); if (!text) throw new Error('보낼 내용을 입력해 주세요.'); }
     catch (error) { notify(error.message, true); return; }
-    if ($('appendEnter').checked) text += '\n';
-    exclusive('텍스트 전송', signal => transmit(text, signal), { caps:true, delay:true });
-  });
+    if (appendEnter) text += '\n';
+    exclusive(mixed ? '한글·영어 직접 타이핑' : '텍스트 전송', async signal => {
+      try { return await transmit(text, signal, mixed); }
+      catch (error) {
+        if (mixed) {
+          const contextual = new Error(error.message + ' 다시 시작하기 전에 대상 PC의 한국어 Microsoft IME가 영문(A) 상태인지 확인하세요.', { cause:error });
+          contextual.name = error.name;
+          throw contextual;
+        }
+        throw error;
+      }
+    }, { caps:true, delay:true });
+  }
+  function renderTextMode() { $('koreanHint').hidden = $('textMode').value !== 'korean'; }
+  $('textMode').addEventListener('change', renderTextMode); renderTextMode();
+  $('sendText').addEventListener('click', () => sendDirect($('text').value, $('textMode').value === 'korean', $('appendEnter').checked));
   function sendUnicode(value) {
     if (!value) { notify('보낼 내용을 입력해 주세요.', true); return; }
     const bytes = new TextEncoder().encode(value);
@@ -309,8 +336,9 @@
   function validatePresets(value) {
     if (!Array.isArray(value) || value.length > 200) throw new Error('프리셋은 최대 200개까지 가져올 수 있습니다.');
     return value.map(p => {
-      if (!p || typeof p.name !== 'string' || !p.name.trim() || p.name.length > 60 || typeof p.value !== 'string' || !p.value || p.value.length > 100000 || !['text','unicode','shortcut'].includes(p.kind)) throw new Error('프리셋 파일 형식이 올바르지 않습니다.');
+      if (!p || typeof p.name !== 'string' || !p.name.trim() || p.name.length > 60 || typeof p.value !== 'string' || !p.value || p.value.length > 100000 || !['text','korean','unicode','shortcut'].includes(p.kind)) throw new Error('프리셋 파일 형식이 올바르지 않습니다.');
       if (p.kind === 'text') normalizeText(p.value);
+      if (p.kind === 'korean') normalizeKoreanText(p.value);
       if (p.kind === 'shortcut') shortcut(p.value);
       return { name:p.name, value:p.value, kind:p.kind };
     });
@@ -326,11 +354,12 @@
     presets.forEach((preset, index) => {
       const item = document.createElement('div'); item.className = 'preset-item';
       const text = document.createElement('div'), title = document.createElement('strong'), sub = document.createElement('small');
-      title.textContent = preset.name; sub.textContent = preset.kind === 'shortcut' ? preset.value : preset.value.slice(0, 60); text.append(title, sub);
+      title.textContent = preset.name; sub.textContent = (preset.kind === 'korean' ? '한글 직접 · 시작 전 영문(A) 확인 · ' : '') + (preset.kind === 'shortcut' ? preset.value : preset.value.slice(0, 60)); text.append(title, sub);
       const send = document.createElement('button'); send.textContent = '전송 ↗'; send.dataset.device = '';
       send.addEventListener('click', () => {
         if (preset.kind === 'shortcut') sendShortcut(preset.value);
         else if (preset.kind === 'unicode') sendUnicode(preset.value);
+        else if (preset.kind === 'korean') sendDirect(preset.value, true);
         else exclusive(preset.name + ' 전송', signal => transmit(preset.value, signal), { caps:true, delay:true });
       });
       const remove = document.createElement('button'); remove.textContent = '×'; remove.className = 'delete'; remove.setAttribute('aria-label', preset.name + ' 삭제');

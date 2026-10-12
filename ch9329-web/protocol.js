@@ -202,7 +202,57 @@
     let count = 0; for (const report of textReports(value, fast)) count++;
     return count ? count + 1 : 0;
   }
-  const api = { packet, Parser, SerialClient, ChipError, asciiReport, shortcut, normalizeText, textReports, textReportCount };
+  const initials = ['r','R','s','e','E','f','a','q','Q','t','T','d','w','W','c','z','x','v','g'];
+  const vowels = ['k','o','i','O','j','p','u','P','h','hk','ho','hl','y','n','nj','np','nl','b','m','ml','l'];
+  const finals = ['','r','R','rt','s','sw','sg','e','f','fr','fa','fq','ft','fx','fv','fg','a','q','qt','t','T','d','w','c','z','x','v','g'];
+  // Only single-key compatibility jamo are supported on their own. Compound
+  // finals and historical/isolated conjoining jamo need the offline decoder.
+  const jamoKeys = Object.fromEntries([...'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎㅏㅐㅑㅒㅓㅔㅕㅖㅗㅛㅜㅠㅡㅣ']
+    .map((char, i) => [char, [...initials, 'k','o','i','O','j','p','u','P','h','y','n','b','m','l'][i]]));
+  function hangulKeys(char) {
+    const index = char.charCodeAt(0) - 0xac00;
+    if (index >= 0 && index < 11172) {
+      return initials[Math.floor(index / 588)] + vowels[Math.floor(index / 28) % 21] + finals[index % 28];
+    }
+    return jamoKeys[char] || null;
+  }
+  function normalizeKoreanText(value) {
+    const text = String(value).replace(/\r\n?/g, '\n').normalize('NFC');
+    for (const char of text) {
+      if (!/^[\x09\x0a\x20-\x7e]$/.test(char) && !hangulKeys(char)) {
+        throw new Error('한글 혼합 직접 입력은 현대 한글 음절·기본 자모·영문·숫자·ASCII 기호만 지원합니다. 다른 문자는 “디코더로 보내기”를 사용해 주세요.');
+      }
+    }
+    return text;
+  }
+  function* koreanTextReports(value, fast = true) {
+    const text = normalizeKoreanText(value);
+    let ascii = '';
+    function* toggle(ime, advance = 0) {
+      yield { modifier:64, keys:[], advance:0, ime };
+      yield { modifier:0, keys:[], advance, wait:100 };
+    }
+    function* flushAscii() {
+      if (!ascii) return;
+      yield* textReports(ascii, fast);
+      yield { modifier:0, keys:[], advance:0 };
+      ascii = '';
+    }
+    for (const char of text) {
+      const strokes = hangulKeys(char);
+      if (!strokes) { ascii += char; continue; }
+      yield* flushAscii();
+      yield* toggle('korean');
+      for (const report of textReports(strokes, fast)) yield { ...report, advance:0 };
+      yield { modifier:0, keys:[], advance:0 };
+      // Commit each syllable before the next one. A continuous key sequence
+      // would turn e.g. 간아 (rksdk) into 가나 on a two-set IME.
+      yield* toggle('english', 1);
+    }
+    yield* flushAscii();
+  }
+  const api = { packet, Parser, SerialClient, ChipError, asciiReport, shortcut, normalizeText, textReports, textReportCount,
+    hangulKeys, normalizeKoreanText, koreanTextReports };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.CH9329 = api;
 })(globalThis);

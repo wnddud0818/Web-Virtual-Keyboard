@@ -7,14 +7,16 @@
     const end = performance.now() + 5000;
     while (!predicate()) { if (performance.now() > end) throw new Error('UI wait timeout: ' + byId('jobDetail').textContent); await new Promise(resolve => setTimeout(resolve, 10)); }
   };
-  let input, writes = [], caps = false, bad = false, rejectSave = false, failOpen = false, cancelSelection = false;
+  let input, writes = [], caps = false, bad = false, rejectSave = false, failOpen = false, cancelSelection = false, rejectHangulKey = false;
   const config = new Uint8Array(50); config[0] = 0x80; config[1] = 0x80; config[5] = 0x25; config[6] = 0x80;
   const reply = (bytes, send) => {
     writes.push([...bytes]);
     if (bad) return;
     const mode = config[0] & 0x7f;
     const unsupported = (bytes[3] === 2 && mode === 3) || ([4,5].includes(bytes[3]) && [1,3].includes(mode));
-    const data = bytes[3] === 1 ? [0x31,1,caps ? 2 : 0,0,0,0,0,0] : bytes[3] === 8 ? config : [unsupported || (bytes[3] === 9 && rejectSave) ? 0xe6 : 0];
+    const rejectedKey = rejectHangulKey && bytes[3] === 2 && bytes[7] !== 0;
+    if (rejectedKey) rejectHangulKey = false;
+    const data = bytes[3] === 1 ? [0x31,1,caps ? 2 : 0,0,0,0,0,0] : bytes[3] === 8 ? config : [unsupported || rejectedKey || (bytes[3] === 9 && rejectSave) ? 0xe6 : 0];
     if (bytes[3] === 9 && !rejectSave) config.set(bytes.slice(5,-1));
     const response = CH9329.packet(bytes[3] | 0x80, data);
     setTimeout(() => send(response), 3);
@@ -53,6 +55,48 @@
   byId('typingMode').value = 'fast'; byId('typingMode').dispatchEvent(new Event('change')); results.push('fast + compatible input');
   writes = []; byId('text').value = '한글'; byId('sendText').click();
   assert(writes.length === 0 && byId('toast').textContent.includes('디코더'), 'unicode direct rejection'); results.push('unicode validation');
+  byId('textMode').value = 'korean'; byId('textMode').dispatchEvent(new Event('change'));
+  assert(!byId('koreanHint').hidden, 'mixed mode setup visible');
+  for (const mode of ['fast', 'compatible']) {
+    byId('typingMode').value = mode; byId('typingMode').dispatchEvent(new Event('change')); byId('keyDelay').value = '0';
+    writes = []; byId('text').value = 'Hi 간아!'; byId('appendEnter').checked = true; byId('sendText').click();
+    assert(byId('textMode').disabled, 'typing mode frozen during job');
+    await wait(() => !byId('sendText').disabled);
+    const keys = writes.filter(b => b[3] === 2);
+    assert(keys.filter(b => b[5] === 64).length === 4, 'each syllable committed via two toggles');
+    assert(keys.some(b => b[7] === 40), 'mixed append Enter');
+    assert(keys.at(-1).slice(5,-1).every(b => b === 0), 'mixed final release');
+    assert(byId('progressCount').textContent === '7 / 7' && byId('jobDetail').textContent.includes('영문(A)'), 'mixed character progress and final mode');
+  }
+  byId('appendEnter').checked = false;
+  byId('typingMode').value = 'fast'; byId('typingMode').dispatchEvent(new Event('change'));
+  writes = []; byId('text').value = 'hello 한글 😀'; byId('sendText').click();
+  assert(writes.length === 0 && byId('toast').textContent.includes('디코더'), 'mixed unsupported text fails before any serial command');
+  writes = []; byId('text').value = '한글'.repeat(10); byId('sendText').click();
+  await wait(() => writes.some(b => b[3] === 2 && b[5] === 64)); byId('stop').click();
+  await wait(() => !byId('sendText').disabled);
+  assert(byId('jobTitle').textContent.includes('중지') && byId('jobDetail').textContent.includes('영문(A)'), 'mixed cancellation guidance');
+  assert(writes.filter(b => b[3] === 2 && b[5] === 64).length === 2, 'cancel during Korean restores English once');
+  assert(writes.at(-1).slice(5,-1).every(b => b === 0), 'mixed cancel released toggle');
+  writes = []; rejectHangulKey = true; byId('text').value = '한'; byId('sendText').click();
+  await wait(() => !byId('sendText').disabled);
+  assert(byId('jobTitle').textContent.includes('완료하지 못') && byId('jobDetail').textContent.includes('영문(A)'), 'mixed command failure guidance');
+  assert(writes.filter(b => b[3] === 2 && b[5] === 64).length === 2, 'command rejection restores English');
+  writes = []; byId('text').value = '한글'; byId('sendText').click();
+  await wait(() => writes.some(b => b[3] === 2 && b[5] === 64)); bad = true;
+  await wait(() => !byId('connect').hidden && !byId('connect').disabled); bad = false;
+  assert(writes.filter(b => b[3] === 2 && b[5] === 64).length === 1, 'lost connection never blindly retries a toggle');
+  assert(byId('jobDetail').textContent.includes('영문(A)'), 'lost connection requires manual IME check');
+  byId('connect').click(); await wait(() => !byId('sendText').disabled);
+  byId('presetKind').value = 'korean'; byId('presetName').value = '혼합 문구'; byId('presetValue').value = '한 A'; byId('savePreset').click();
+  const mixedPreset = [...byId('presets').children].find(el => el.textContent.includes('혼합 문구'));
+  assert(mixedPreset && mixedPreset.textContent.includes('영문(A)'), 'mixed preset setup reminder');
+  byId('textMode').value = 'ascii'; byId('textMode').dispatchEvent(new Event('change'));
+  writes = []; mixedPreset.querySelector('button').click(); await wait(() => !byId('sendText').disabled);
+  assert(writes.filter(b => b[3] === 2 && b[5] === 64).length === 2, 'preset uses its own mixed mode');
+  mixedPreset.querySelector('.delete').click(); byId('presetKind').value = 'text';
+  results.push('mixed fast/compatible + validation + cancel/error restoration + connection loss + preset');
+  writes = [];
   caps = true; byId('text').value = 'abc'; byId('sendText').click(); await wait(() => !byId('sendText').disabled);
   assert(!writes.some(b => b[3] === 2), 'caps lock should stop before typing'); caps = false; results.push('Caps Lock guard');
   writes = []; byId('text').value = 'a'.repeat(500); byId('sendText').click();

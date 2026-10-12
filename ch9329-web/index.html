@@ -41,8 +41,10 @@
       <div class="primary-column">
         <section id="panel-keyboard" class="panel" data-input="keyboard">
           <div class="card text-card"><div class="card-heading"><div><span class="eyebrow">01 / TYPE</span><h2>텍스트 보내기</h2></div><span class="quiet-pill">US 키보드</span></div>
-            <label for="text" class="sr-only">전송할 텍스트</label><textarea id="text" placeholder="보낼 내용을 입력하세요.&#10;영문·숫자·기호는 바로, 한글은 디코더로 보낼 수 있어요." spellcheck="false"></textarea>
+            <label for="text" class="sr-only">전송할 텍스트</label><textarea id="text" placeholder="보낼 내용을 입력하세요.&#10;한글과 영어를 함께 직접 타이핑하거나 디코더로 보낼 수 있어요." spellcheck="false"></textarea>
             <div class="text-meta"><span id="charCount">0자</span><label class="check"><input id="appendEnter" type="checkbox">끝에 Enter 추가</label></div>
+            <label class="direct-mode">직접 타이핑 방식<select id="textMode" aria-describedby="koreanHint"><option value="ascii">영문·숫자·기호 (ASCII)</option><option value="korean">한글 + 영어 (Windows 두벌식)</option></select></label>
+            <p id="koreanHint" class="hint" hidden>대상 PC에서 한국어 Microsoft IME · 두벌식 · 101키 종류 1을 선택하고, 영문(A) 상태로 시작하세요. 한글은 음절마다 확정해 입력하며 완료 후 영문(A)으로 돌아옵니다. 현재 한/영 상태는 자동 확인할 수 없습니다. 중지·오류 후에는 상태를 다시 확인하세요. 이모지·한자 등은 디코더로 보내세요.</p>
             <div class="action-row"><button id="sendText" class="primary" data-device>텍스트 전송 <span>↗</span></button><button id="sendUnicode" class="secondary" data-device>디코더로 보내기</button></div>
             <p class="hint">대상 PC는 영문 입력 상태, Caps Lock 끄기. 전송할 입력창을 먼저 선택하세요.</p>
           </div>
@@ -53,7 +55,7 @@
           </div>
           <div class="card"><div class="card-heading"><div><span class="eyebrow">SAVED FOR LATER</span><h2>내 프리셋</h2></div><button id="exportPresets" class="text-button">내보내기 ↓</button></div>
             <div id="presets" class="preset-list"></div>
-            <details class="preset-editor"><summary>＋ 프리셋 추가 / 가져오기</summary><label>이름<input id="presetName" maxlength="60" placeholder="예: 자주 쓰는 문구"></label><label>종류<select id="presetKind"><option value="text">텍스트 (직접 입력)</option><option value="unicode">텍스트 (디코더로 복원)</option><option value="shortcut">단축키</option></select></label><label>내용<textarea id="presetValue" rows="2" placeholder="텍스트 또는 CTRL+C 같은 단축키"></textarea></label><div class="action-row"><button id="savePreset" class="secondary">프리셋 저장</button><label class="file-button">가져오기<input type="file" id="importPresets" accept="application/json,.json"></label></div></details>
+            <details class="preset-editor"><summary>＋ 프리셋 추가 / 가져오기</summary><label>이름<input id="presetName" maxlength="60" placeholder="예: 자주 쓰는 문구"></label><label>종류<select id="presetKind"><option value="text">텍스트 (영문 직접 입력)</option><option value="korean">텍스트 (한글 + 영어 직접 입력)</option><option value="unicode">텍스트 (디코더로 복원)</option><option value="shortcut">단축키</option></select></label><label>내용<textarea id="presetValue" rows="2" placeholder="텍스트 또는 CTRL+C 같은 단축키"></textarea></label><div class="action-row"><button id="savePreset" class="secondary">프리셋 저장</button><label class="file-button">가져오기<input type="file" id="importPresets" accept="application/json,.json"></label></div></details>
             <p class="hint" id="storageHint">프리셋은 이 브라우저에 평문으로 저장됩니다. 폴더를 옮기기 전 내보내기로 보관하세요.</p>
           </div>
         </section>
