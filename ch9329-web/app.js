@@ -53,6 +53,7 @@
     $('backupConfig').disabled = !config || busy;
     $('sendFile').disabled = !available || !prepared || !capabilities?.keyboard;
     $('prepareFile').disabled = busy || !selectedFile;
+    $('resumeChunk').disabled = busy;
     $('keyDelay').disabled = busy || $('typingMode').value === 'fast'; $('startDelay').disabled = busy;
     $('typingMode').disabled = busy;
     $('textMode').disabled = busy;
@@ -103,11 +104,12 @@
       $('jobTitle').textContent = '완료했습니다'; $('jobDetail').textContent = typeof result === 'string' ? result : '장치에서 명령 처리 응답을 받았습니다.';
     } catch (error) {
       $('jobTitle').textContent = error.name === 'AbortError' ? '전송을 중지했습니다' : '작업을 완료하지 못했습니다';
-      $('jobDetail').textContent = error.message + (usb ? ' 일부 입력은 남아 있을 수 있습니다. 다시 전송하려면 대상 내용을 먼저 비워 주세요.' : '');
+      $('jobDetail').textContent = error.message + (usb && !error.resume ? ' 일부 입력은 남아 있을 수 있습니다. 다시 전송하려면 대상 내용을 먼저 비워 주세요.' : '');
       notify(error.message, error.name !== 'AbortError');
     } finally { busy = false; aborter = null; sync(); }
   }
-  async function transmit(value, signal, mixed = false) {
+  // `sent.done` keeps the acknowledged character count readable after an abort or fault.
+  async function transmit(value, signal, mixed = false, sent = {}) {
     const text = mixed ? normalizeKoreanText(value) : normalizeText(value);
     if (!text.length) throw new Error('보낼 내용을 입력해 주세요.');
     const fast = $('typingMode').value === 'fast';
@@ -119,7 +121,7 @@
         check(signal);
         await client.keyboard(report.modifier, report.keys);
         if (report.ime) ime = report.ime;
-        done += report.advance;
+        done += report.advance; sent.done = done;
         if (done === text.length || performance.now() - lastPaint > 80) {
           progress(done, text.length); lastPaint = performance.now();
           const remaining = done ? ((lastPaint - started) / done) * (text.length - done) : 0;
@@ -280,15 +282,44 @@
     const wait = fast ? 0 : text.length * (Number($('keyDelay').value) || 0) / 1000;
     return duration(wire + wait);
   }
+  // Chunk 1 restarts from the header; later chunks skip what the decoder already holds.
+  function resumeOffset(plan) {
+    const from = Number($('resumeChunk').value), chunks = plan.starts.length;
+    if (!chunks || from === 1) return 0;
+    if (!Number.isInteger(from) || from < 1 || from > chunks) throw new Error(`시작 청크는 1–${chunks.toLocaleString()} 사이로 입력해 주세요.`);
+    return plan.starts[from - 1];
+  }
   function renderFileSummary() {
     if (!prepared) return;
-    const plan = prepared;
-    $('fileSummary').textContent = `${plan.name} · ${bytesLabel(plan.original)}\n${plan.mode} · ${plan.text.length.toLocaleString()}자 · 통신·입력 간격 기준 최소 약 ${estimate(plan.text)} (실제는 더 걸릴 수 있음)${plan.saved ? '\n압축으로 ' + plan.saved.toLocaleString() + '자 절약' : ''}\n대상: ${plan.mode === '원문 텍스트' ? '빈 일반 텍스트 편집기' : 'decoder.html의 데이터 입력창'}`;
+    const plan = prepared, chunks = plan.starts.length;
+    let resume = '';
+    try {
+      const offset = resumeOffset(plan);
+      if (offset) resume = `\n청크 ${$('resumeChunk').value}부터 이어 보내기 · ${(plan.text.length - offset).toLocaleString()}자 · 최소 약 ${estimate(plan.text.slice(offset))}`;
+    } catch (error) { resume = '\n' + error.message; }
+    $('resumeField').hidden = !chunks; $('resumeChunk').max = String(chunks); $('resumeTotal').textContent = '/ ' + chunks.toLocaleString();
+    $('fileSummary').textContent = `${plan.name} · ${bytesLabel(plan.original)}\n${plan.mode} · ${chunks ? '청크 ' + chunks.toLocaleString() + '개 · ' : ''}${plan.text.length.toLocaleString()}자 · 통신·입력 간격 기준 최소 약 ${estimate(plan.text)} (실제는 더 걸릴 수 있음)${plan.saved ? '\n압축으로 ' + plan.saved.toLocaleString() + '자 절약' : ''}${resume}\n대상: ${plan.mode === '원문 텍스트' ? '빈 일반 텍스트 편집기' : 'decoder.html의 데이터 입력창'}`;
+  }
+  // Point the next attempt at the chunk the interruption hit. Its partial line is removed on the target by hand.
+  function resumable(plan, at, error) {
+    const next = plan.starts.filter(start => start <= at).length;
+    if (next < 2 || prepared !== plan) return error;
+    let guidance;
+    if (at >= plan.text.length - 'END\n'.length) guidance = '모든 청크를 보냈습니다. 대상 디코더 입력창 맨 끝에 END 줄을 완성한 뒤 “검증하고 열기”를 누르세요.';
+    else {
+      $('resumeChunk').value = String(next); renderFileSummary();
+      guidance = `청크 ${next}부터 이어 보내도록 설정했습니다. 대상 디코더 입력창 맨 끝의 끝까지 입력되지 않은 줄을 지우고, 마지막 C|번호| 다음 번호인지 확인한 뒤 다시 전송하세요.`;
+    }
+    const contextual = new Error(error.message + ' ' + guidance, { cause:error });
+    contextual.name = error.name; contextual.resume = true;
+    return contextual;
   }
   $('baud').addEventListener('change', renderFileSummary);
   $('keyDelay').addEventListener('change', renderFileSummary);
+  $('resumeChunk').addEventListener('change', renderFileSummary);
   function selectFile(file) {
     fileRevision++; selectedFile = file || null; prepared = null;
+    $('resumeChunk').value = '1'; $('resumeField').hidden = true;
     $('fileSummary').textContent = file ? `${file.name} · ${bytesLabel(file.size)} · “전송 준비”를 눌러 주세요.` : '파일을 선택해 주세요.'; sync();
   }
   $('fileInput').addEventListener('change', () => selectFile($('fileInput').files[0]));
@@ -311,13 +342,20 @@
         if (!plan.text) throw new Error('빈 파일은 파일 복원 모드로 보내 주세요.');
       } else plan = await WVK.prepare(bytes, file.name);
       if (revision !== fileRevision) return;
-      prepared = { ...plan, name:file.name, original:file.size }; renderFileSummary();
+      prepared = { ...plan, name:file.name, original:file.size, starts:mode === 'raw' ? [] : WVK.chunkStarts(plan.text) }; renderFileSummary();
     } catch (error) { if (revision === fileRevision) $('fileSummary').textContent = error.message; notify(error.message, true); }
     finally { busy = false; sync(); }
   });
   $('sendFile').addEventListener('click', () => {
     const plan = prepared; if (!plan) return;
-    exclusive(plan.name + ' 전송', async signal => { await transmit(plan.text, signal); return plan.mode === '원문 텍스트' ? '전송 완료. 대상 편집기에서 내용을 확인하세요.' : '전송 완료. 대상 디코더에서 검증하고 파일을 저장하세요.'; }, { caps:true, delay:true });
+    let offset; try { offset = resumeOffset(plan); } catch (error) { notify(error.message, true); return; }
+    const sent = { done:0 };
+    exclusive(plan.name + ' 전송', async signal => {
+      try { await transmit(plan.text.slice(offset), signal, false, sent); }
+      catch (error) { throw resumable(plan, offset + sent.done, error); }
+      if (offset && prepared === plan) { $('resumeChunk').value = '1'; renderFileSummary(); }
+      return plan.mode === '원문 텍스트' ? '전송 완료. 대상 편집기에서 내용을 확인하세요.' : `${offset ? '이어 보내기' : '전송'} 완료. 대상 디코더에서 검증하고 파일을 저장하세요.`;
+    }, { caps:true, delay:true });
   });
   function download(name, value, type = 'application/json') {
     const url = URL.createObjectURL(new Blob([value], { type }));

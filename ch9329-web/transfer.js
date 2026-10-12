@@ -43,7 +43,13 @@
     }
     return { text:plain, mode:'WVK1 · Base64', original:bytes.length, saved:0 };
   }
-  const api = { crc32, sha256, envelope, prepare, safeFilename };
+  // Offset of each "C|" line; index i is chunk i + 1. Resuming types from one of these.
+  function chunkStarts(text) {
+    const starts = [];
+    for (let at = text.indexOf('\nC|'); at >= 0; at = text.indexOf('\nC|', at + 1)) starts.push(at + 1);
+    return starts;
+  }
+  const api = { crc32, sha256, envelope, prepare, safeFilename, chunkStarts };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.WVK = api;
 })(globalThis);

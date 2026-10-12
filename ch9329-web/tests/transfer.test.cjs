@@ -48,6 +48,18 @@ test('corruption, missing END, and missing chunks fail validation', async () => 
   await assert.rejects(context.decoder.decodeWvk(result.text.replace('END\n','')));
   await assert.rejects(context.decoder.decodeWvk(result.text.replace(/C\|000002[^\n]*\n/,'')));
 });
+test('chunk offsets let an interrupted transfer resume from any chunk', async () => {
+  const result = await WVK.prepare(randomBytes(2317), 'resume.bin', false);
+  const starts = WVK.chunkStarts(result.text);
+  assert.equal(starts.length, 4);
+  starts.forEach((start, i) => assert.ok(result.text.startsWith(`C|${String(i + 1).padStart(6, '0')}|`, start)));
+  // The target kept chunks 1–2 and part of chunk 3; that partial line is deleted before resuming.
+  const typed = result.text.slice(0, starts[2] + 40);
+  const resumed = typed.slice(0, typed.lastIndexOf('\n') + 1) + result.text.slice(starts[2]);
+  assert.equal((await context.decoder.decodeWvk(resumed)).chunks, 4);
+  await assert.rejects(context.decoder.decodeWvk(result.text.slice(0, starts[2]) + result.text.slice(starts[1])));
+  assert.deepEqual(WVK.chunkStarts('WVK1\nNAME=C|x\n\nEND\n'), []);
+});
 test('oversize source rejected before compression', async () => {
   await assert.rejects(WVK.prepare(new Uint8Array(16 * 1024 * 1024 + 1),'big.bin'), /16 MiB/);
 });
