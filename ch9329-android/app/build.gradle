@@ -6,8 +6,8 @@ android {
         applicationId 'com.wnddud.hiddesk'
         minSdk 26
         targetSdk 35
-        versionCode 2
-        versionName '1.0.1'
+        versionCode 3
+        versionName '1.0.2'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     // Reuse a private local development key when present; fresh clones use
@@ -25,3 +25,8 @@ android {
     buildTypes { release { minifyEnabled false } }
 }
 dependencies { implementation files('libs/usb-serial-for-android-3.11.0.jar') }
+tasks.register('prepareWebAssets', Exec) {
+    workingDir rootProject.projectDir
+    commandLine 'python3', 'scripts/prepare_assets.py'
+}
+tasks.named('preBuild') { dependsOn 'prepareWebAssets' }

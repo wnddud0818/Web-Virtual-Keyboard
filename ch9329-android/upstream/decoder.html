@@ -15,6 +15,12 @@
 <div class="muted" data-t="compressionInfo"></div>
 <label for="data" data-t="dataLabel"></label>
 <textarea id="data" spellcheck="false" autocomplete="off" autofocus placeholder="WVK2&#10;NAME=example.bin&#10;SIZE=...&#10;CHUNKS=...&#10;SHA256=...&#10;C|000001|CRC32|BASE64...&#10;END"></textarea>
+<details id="patchOptions">
+<summary data-t="patchSummary"></summary>
+<label for="baseFile" data-t="baseLabel"></label>
+<input id="baseFile" type="file" aria-describedby="baseHint">
+<p id="baseHint" class="muted" data-t="baseHint"></p>
+</details>
 <div class="row">
 <label for="name"><span data-t="nameLabel"></span><input id="name" value="decoded.bin" autocomplete="off"></label>
 <button id="decode" type="button" data-t="decode"></button>
@@ -34,6 +40,15 @@
 // US-ASCII keycodes only, so the source must stay pure ASCII. Korean UI text is
 // therefore written as \uXXXX escapes and kept in one table; edit only here.
 const T = {
+	patchSummary: "\ubcc0\uacbd\ubd84 \uc804\uc1a1\uc744 \ubc1b\uc744 \ub54c",
+	baseLabel: "\uc218\uc815 \uc804 \uae30\uc900 \ud30c\uc77c \uc120\ud0dd",
+	baseHint: "\ub300\uc0c1 PC\uc758 \uc218\uc815 \uc804 \ud30c\uc77c\uc744 \uc120\ud0dd\ud558\uc138\uc694. \uae30\uc900 \ud30c\uc77c\uacfc \ubcf5\uc6d0 \uacb0\uacfc\uc758 SHA-256\uc744 \uac80\uc99d\ud55c \ub4a4 \uc800\uc7a5\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4. \uae30\uc874 \ud30c\uc77c\uc740 \uc790\ub3d9\uc73c\ub85c \ub36e\uc5b4\uc4f0\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.",
+	needBase: "\ubcc0\uacbd\ubd84 \uc804\uc1a1\uc785\ub2c8\ub2e4. \uc218\uc815 \uc804 \uae30\uc900 \ud30c\uc77c\uc744 \uc120\ud0dd\ud55c \ub4a4 \ub2e4\uc2dc \uac80\uc99d\ud558\uc138\uc694.",
+	badPatch: "\ubcc0\uacbd\ubd84 \ub370\uc774\ud130\uc758 \ud615\uc2dd \ub610\ub294 \ubcc0\uacbd \ubc94\uc704\uac00 \uc62c\ubc14\ub974\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.",
+	patchLimit: "\ubcc0\uacbd\ubd84\uacfc \uae30\uc900 \ud30c\uc77c, \ubcf5\uc6d0 \uacb0\uacfc\ub294 \uac01\uac01 \ucd5c\ub300 16 MiB\uae4c\uc9c0 \uc9c0\uc6d0\ud569\ub2c8\ub2e4.",
+	wrongBase: "\uae30\uc900 \ud30c\uc77c\uc758 \ud06c\uae30 \ub610\ub294 SHA-256\uc774 \uc77c\uce58\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4. \uc1a1\uc2e0 \uce21\uc5d0\uc11c \uc120\ud0dd\ud55c \uc218\uc815 \uc804 \ud30c\uc77c\uc744 \uc120\ud0dd\ud558\uc138\uc694.",
+	wrongResult: "\ubcc0\uacbd\ubd84\uc744 \uc801\uc6a9\ud55c \uacb0\uacfc\uc758 SHA-256\uc774 \uc77c\uce58\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.",
+	patched: n => "\ubcc0\uacbd \uad6c\uac04 " + n + "\uac1c \uc801\uc6a9 \ubc0f SHA-256 \uac80\uc99d \uc644\ub8cc",
 	compressionInfo: "\uc555\ucd95 \uc804\uc1a1 \uc9c0\uc6d0: \uc555\ucd95\uc740 \uc790\ub3d9\uc73c\ub85c \ud480\uace0 \uc6d0\ubcf8 \ud06c\uae30\uc640 SHA-256\uc744 \uac80\uc99d\ud569\ub2c8\ub2e4.",
 	badEncoding: "\uc9c0\uc6d0\ud558\uc9c0 \uc54a\ub294 \uc555\ucd95 \ud615\uc2dd\uc785\ub2c8\ub2e4.",
 	badOriginalSize: "\uc6d0\ubcf8 \ud06c\uae30 \uc815\ubcf4\uac00 \uc62c\ubc14\ub974\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.",
@@ -89,6 +104,7 @@ document.title = T.title;
 
 const box=document.getElementById("data"),nameBox=document.getElementById("name"),button=document.getElementById("decode"),statusBox=document.getElementById("status");
 const preview=document.getElementById("preview"),outBox=document.getElementById("out"),copyButton=document.getElementById("copy"),downloadButton=document.getElementById("download");
+const baseInput=document.getElementById("baseFile"),patchOptions=document.getElementById("patchOptions"),patchLimit=16*1024*1024;
 const crcTable=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?0xedb88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
 const shaK=new Uint32Array([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
 function fail(message){throw new Error(message)}
@@ -121,12 +137,14 @@ function parseWvk(value){
   }
  }
  if(!ended)fail(T.noEnd);
+ if(head.CONTENT!==undefined&&head.CONTENT!=="patch-v1")fail(T.badPatch);
  const count=Number(head.CHUNKS);
  if(!/^\d+$/.test(head.CHUNKS)||!Number.isSafeInteger(count)||count<0)fail(T.badChunks);
  if(parts.length!==count)fail(T.chunkCount(count,parts.length));
  const size=Number(head.SIZE);
  if(!/^\d+$/.test(head.SIZE)||!Number.isSafeInteger(size)||size<0)fail(T.badSize);
  if(total!==size)fail(T.fileSize(size,total));
+ if(head.CONTENT==="patch-v1"&&(size>patchLimit||Number(head.ORIGINAL_SIZE)>patchLimit||!/^[0-9A-Fa-f]{64}$/.test(head.SHA256)))fail(T.badPatch);
  let originalSize=0;
  if(version==="WVK2"){
   if(head.ENCODING!=="gzip")fail(T.badEncoding);
@@ -139,7 +157,7 @@ function parseWvk(value){
   if(!/^[0-9A-Fa-f]{64}$/.test(head.SHA256))fail(T.badSha);
   if(sha256(out)!==head.SHA256.toLowerCase())fail(T.shaMismatch);
  }
- return{bytes:out,name:safeName(head.NAME),chunks:parts.length,version,originalSize,originalSha256:head.ORIGINAL_SHA256};
+ return{bytes:out,name:safeName(head.NAME),chunks:parts.length,version,originalSize,originalSha256:head.ORIGINAL_SHA256,content:head.CONTENT};
 }
 async function decodeWvk(value){
  const file=parseWvk(value);if(file.version!=="WVK2")return file;
@@ -161,6 +179,34 @@ async function decodeWvk(value){
  if(sha256(bytes)!==file.originalSha256.toLowerCase())fail(T.originalShaMismatch);
  return{...file,bytes};
 }
+// All offsets refer to the original bytes. No text normalization or fuzzy matching.
+function applyPatch(payload,base){
+ if(payload.length>patchLimit||base.length>patchLimit)fail(T.patchLimit);
+ let patch;try{patch=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(payload))}catch(e){fail(T.badPatch)}
+ const size=n=>Number.isSafeInteger(n)&&n>=0&&n<=patchLimit;
+ const hash=s=>typeof s==="string"&&/^[0-9a-f]{64}$/.test(s);
+ if(!patch||patch.format!=="WVKPATCH1"||typeof patch.name!=="string"||!patch.name||patch.name.length>128||
+    !size(patch.baseSize)||!size(patch.resultSize)||!hash(patch.baseSha256)||!hash(patch.resultSha256)||
+    !Array.isArray(patch.ops)||!patch.ops.length||patch.ops.length>4096)fail(T.badPatch);
+ if(base.length!==patch.baseSize||sha256(base)!==patch.baseSha256)fail(T.wrongBase);
+ const parts=[];let cursor=0,total=0;
+ for(const op of patch.ops){
+  if(!op||!size(op.offset)||!size(op.deleteBytes)||op.offset<cursor||op.offset>base.length||
+     op.deleteBytes>base.length-op.offset||typeof op.dataBase64!=="string")fail(T.badPatch);
+  const data=fromBase64(op.dataBase64);
+  if(!op.deleteBytes&&!data.length)fail(T.badPatch);
+  const kept=base.subarray(cursor,op.offset);
+  total+=kept.length+data.length;
+  if(total>patch.resultSize)fail(T.badPatch);
+  parts.push(kept,data);cursor=op.offset+op.deleteBytes;
+ }
+ const tail=base.subarray(cursor);total+=tail.length;
+ if(total!==patch.resultSize)fail(T.badPatch);
+ const bytes=new Uint8Array(total);let at=0;
+ for(const part of parts){bytes.set(part,at);at+=part.length}bytes.set(tail,at);
+ if(sha256(bytes)!==patch.resultSha256)fail(T.wrongResult);
+ return{bytes,name:safeName(patch.name),changes:patch.ops.length};
+}
 function save(bytes,name){const blob=new Blob([bytes],{type:"application/octet-stream"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=safeName(name);document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000)}
 // Strict UTF-8 with a control-byte guard: real text passes, binary does not.
 // A lone 0xEA from a truncated Hangul syllable makes the decoder throw, so a
@@ -173,7 +219,28 @@ async function copyDecoded(){const text=outBox.value;try{await navigator.clipboa
 // Text is shown, never auto-downloaded; binary keeps the old download-on-verify
 // behaviour so existing file transfers are unchanged.
 function deliver(bytes,name,verified){const text=asText(bytes);if(text===null){hidePreview();save(bytes,name);statusBox.textContent=T.downloaded(verified,name);return}showPreview(text,bytes,name);statusBox.textContent=T.showing(verified,name,text.length)}
-async function decode(){if(button.disabled)return;button.disabled=true;statusBox.className="";statusBox.textContent=T.verifying;try{const value=box.value.trim();if(!value)fail(T.needInput);if(/^WVK[12](?:\r?\n|$)/.test(value)){const file=await decodeWvk(value);deliver(file.bytes,file.name,T.verifiedChunks(file.chunks))}else{const bytes=fromBase64(value);deliver(bytes,safeName(nameBox.value),T.decodedBytes(bytes.length))}statusBox.className="ok"}catch(e){hidePreview();statusBox.textContent=e.message||T.failed;statusBox.className="err"}finally{button.disabled=false}}
+async function decode(){
+ if(button.disabled)return;
+ button.disabled=true;box.disabled=true;baseInput.disabled=true;hidePreview();
+ statusBox.className="";statusBox.textContent=T.verifying;
+ try{
+  const value=box.value.trim();if(!value)fail(T.needInput);
+  if(/^WVK[12](?:\r?\n|$)/.test(value)){
+   const file=await decodeWvk(value);
+   if(file.content==="patch-v1"){
+    patchOptions.open=true;
+    const selected=baseInput.files&&baseInput.files[0];if(!selected)fail(T.needBase);
+    if(selected.size>patchLimit)fail(T.patchLimit);
+    const result=applyPatch(file.bytes,new Uint8Array(await selected.arrayBuffer()));
+    deliver(result.bytes,result.name,T.patched(result.changes));
+   }else deliver(file.bytes,file.name,T.verifiedChunks(file.chunks));
+  }else{
+   const bytes=fromBase64(value);deliver(bytes,safeName(nameBox.value),T.decodedBytes(bytes.length));
+  }
+  statusBox.className="ok";
+ }catch(e){hidePreview();statusBox.textContent=e.message||T.failed;statusBox.className="err"}
+ finally{button.disabled=false;box.disabled=false;baseInput.disabled=false}
+}
 button.addEventListener("click",decode);box.addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();decode()}});
 copyButton.addEventListener("click",copyDecoded);downloadButton.addEventListener("click",()=>{if(decodedBytes)save(decodedBytes,decodedName)});
 </script>

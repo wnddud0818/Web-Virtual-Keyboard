@@ -1,10 +1,19 @@
-# HID Desk Android 1.0.1
+# HID Desk Android 1.0.2
 
 CH9329 + CH340 USB 케이블로 다른 PC에 키보드·마우스 입력을 보내는 갤럭시용 오프라인 앱입니다. 원본 프로젝트의 CH9329 버전만 포함합니다. ESP32 펌웨어나 Wi-Fi 기능은 포함하지 않습니다.
 
-**[APK 다운로드: HID-Desk-Android-1.0.1.apk](https://github.com/wnddud0818/Web-Virtual-Keyboard/raw/refs/heads/main/ch9329-android/apk/HID-Desk-Android-1.0.1.apk)**
+**[APK 다운로드: HID-Desk-Android-1.0.2.apk](apk/HID-Desk-Android-1.0.2.apk)**
 
 검증한 설치 파일은 `apk/`에 있습니다. 이 폴더를 Android Studio에서 열면 앱 프로젝트를 빌드할 수 있습니다.
+
+## 1.0.2 변경분 전송
+
+- 현재 `ch9329-web`의 화면과 전송 기능을 반영했습니다. UTF-8 코드·텍스트의 여러 변경 구간만 전송하고 대상 디코더에서 기준 파일과 결과의 SHA-256을 검증합니다.
+- 한글·이모지·BOM·줄바꿈을 보존합니다. 변경이 없으면 전송하지 않고, 지원하지 않는 파일이나 전체 압축 전송이 더 효율적인 경우에는 전체 파일로 보냅니다.
+- 앱의 **디코더 내려받기**로 변경분 적용 기능이 포함된 새 디코더를 저장할 수 있습니다. 대상 PC의 기존 디코더를 이 버전으로 교체하세요.
+- 저장소 전체에서 빌드하면 `ch9329-web`의 현재 내용을 자동으로 반영합니다. 안드로이드 폴더만 사용하는 경우에는 갱신된 `upstream/` 스냅샷을 사용합니다.
+
+**이번 1.0.2 개발 APK는 새 로컬 개발 키로 서명했습니다. 기존 배포 1.0.1과 서명이 달라 업데이트 설치가 불가능합니다. 기존 앱의 프리셋을 JSON으로 내보낸 뒤 기존 앱을 삭제하고 새 APK를 설치해야 합니다.** 이후 같은 키로 빌드할 수 있도록 로컬 `debug.keystore`를 보관하세요. 키는 Git에서 제외됩니다.
 
 ## 1.0.1 연결 수정
 
@@ -14,11 +23,11 @@ CH9329 + CH340 USB 케이블로 다른 PC에 키보드·마우스 입력을 보�
 - USB 권한 결과는 명시적인 내부 수신기로 받도록 보완했습니다. USB 권한은 Android 설정의 일반 앱 권한 목록에서 켜는 권한이 아닙니다.
 - 연결되지 않은 상태에서 장치 설정을 변경할 수 없는 이유를 설정 화면에 표시합니다.
 
-기존 1.0.0과 패키지·서명 키가 같고 버전 코드가 올라갔습니다. 기존 앱을 삭제하지 않고 **업데이트 설치**하면 저장된 프리셋을 유지할 수 있습니다.
+이전 배포 1.0.1은 1.0.0과 패키지·서명 키가 같아 업데이트 설치를 지원했습니다. 이번 1.0.2의 서명 차이는 위 안내를 확인하세요.
 
 ## 설치와 실행
 
-1. `HID-Desk-Android-1.0.1.apk`를 갤럭시로 내려받아 실행하고 설치합니다. 설치를 여는 파일 앱에 대해 안드로이드가 요구하는 **알 수 없는 앱 설치 허용**을 설정해야 할 수 있습니다.
+1. `HID-Desk-Android-1.0.2.apk`를 갤럭시로 내려받아 실행하고 설치합니다. 설치를 여는 파일 앱에 대해 안드로이드가 요구하는 **알 수 없는 앱 설치 허용**을 설정해야 할 수 있습니다.
 2. **CH340 쪽 USB를 갤럭시의 USB-C OTG 젠더에**, **CH9329 쪽 USB를 입력받을 PC에** 연결합니다.
 3. 앱을 열고 위쪽 **USB 확인 / 권한**에서 장치가 감지되는지 확인합니다. **USB 권한 요청**을 누르고 허용한 뒤 화면의 **케이블 연결**을 누릅니다. 지원 장치가 여러 개이면 선택 창이 열립니다.
 4. 초기 속도는 **9600 bps**, 주소는 **0**입니다. 기존에 케이블 속도를 변경했다면 그 값을 선택합니다.
@@ -33,6 +42,7 @@ Android 8.0(API 26) 이상, USB OTG 지원, 최신 Android System WebView가 필
 - 상대·절대 마우스 이동, 클릭, 더블 클릭, 스크롤.
 - 프리셋 저장과 JSON 가져오기·내보내기.
 - WVK1/WVK2 파일 전송, gzip 자동 압축, CRC32/SHA-256 검증용 디코더, 중지와 청크 이어 보내기.
+- UTF-8 텍스트 변경분 전송, 기준 파일·복원 결과 검증, 효율에 따른 전체 전송 전환.
 - 디코더 빠른 설치·전체 소스 타이핑·HTML 저장.
 - CH9329 설정 읽기·백업, 동작 모드와 통신 속도 저장.
 
@@ -44,6 +54,8 @@ Android 8.0(API 26) 이상, USB OTG 지원, 최신 Android System WebView가 필
 
 파일 복원 모드는 대상 PC의 `decoder.html` 데이터 입력창을 선택해야 합니다. 전송 후 대상 PC에서 **검증하고 열기**를 누르세요. 파일 전체가 많은 키 입력으로 전송되므로 큰 파일은 오래 걸립니다. 파일 준비 한도는 기존 버전과 같은 16 MiB입니다. 압축 효과가 없는 파일은 WVK1로 보냅니다.
 
+변경분 전송은 파일 선택 영역에서 **수정 후 파일**을 선택한 뒤 **변경분 전송 (UTF-8 텍스트)**으로 바꾸고 **수정 전 기준 파일**을 선택합니다. 대상 PC의 새 디코더에도 동일한 수정 전 파일을 선택해 적용합니다. 전체 전송과 변경분 전송의 전송량을 준비 단계에서 비교합니다. 자세한 지원 범위와 절차는 [웹 버전 안내](upstream/README.md#변경분만-전송하기)를 확인하세요.
+
 키보드 전용 **모드 1**에서는 마우스를 사용할 수 없습니다. **모드 3**에서는 키보드·마우스·파일 타이핑을 사용할 수 없습니다. 모드·속도를 저장한 뒤에는 양쪽 USB를 모두 뽑았다가 다시 연결합니다. 115200 bps는 CH9329가 실제로 5V로 동작하는 제품에서만 사용하세요.
 
 ## 앱을 나가거나 연결이 끊겼을 때
@@ -54,7 +66,7 @@ USB가 이미 분리되거나 앱 프로세스가 강제로 종료되면 키 해
 
 ## 빌드
 
-Android Studio에서 이 폴더를 프로젝트로 열고 SDK Platform 35, Build Tools 35.0.0, JDK 17을 설치한 뒤 `app`을 빌드할 수 있습니다. Gradle 경로는 AGP 8.7.3 / Gradle 8.9 기준입니다. 빌드 전에 `python3 scripts/prepare_assets.py`로 화면 파일을 갱신합니다.
+Android Studio에서 이 폴더를 프로젝트로 열고 SDK Platform 35, Build Tools 35.0.0, JDK 17 이상을 설치한 뒤 `app`을 빌드할 수 있습니다. Gradle 경로는 AGP 8.7.3 / Gradle 8.9 기준입니다. Gradle과 수동 빌드 모두 `scripts/prepare_assets.py`를 자동 실행해 현재 웹 화면을 반영합니다.
 
 Gradle 없이 공식 Android SDK 도구만으로 빌드하는 경로도 포함합니다(Linux/macOS):
 
@@ -62,7 +74,7 @@ Gradle 없이 공식 Android SDK 도구만으로 빌드하는 경로도 포함�
 python3 scripts/build_apk.py --jdk /path/to/jdk17 --sdk /path/to/android-sdk
 ```
 
-출력: `build/HID-Desk-Android-1.0.1.apk`. 이 경로는 Java를 컴파일하고 D8으로 DEX를 생성한 뒤 zipalign과 apksigner로 정렬·서명·검증합니다. 개발 서명 키 `debug.keystore`는 로컬에서 처음 빌드할 때 생성되며 Git에서 제외됩니다. 이미 로컬 개발 키가 있으면 이를 재사용합니다. 개발 키 비밀번호는 표준값 `android`입니다. Android Studio는 로컬 개발 키가 없을 때 표준 디버그 키로 서명합니다.
+출력: `build/HID-Desk-Android-1.0.2.apk`. 이 경로는 Java를 컴파일하고 D8으로 DEX를 생성한 뒤 zipalign과 apksigner로 정렬·서명·검증합니다. 개발 서명 키 `debug.keystore`는 로컬에서 처음 빌드할 때 생성되며 Git에서 제외됩니다. 이미 로컬 개발 키가 있으면 이를 재사용합니다. 개발 키 비밀번호는 표준값 `android`입니다. Android Studio는 로컬 개발 키가 없을 때 표준 디버그 키로 서명합니다. 다른 SDK 플랫폼의 `android.jar`를 사용하려면 `--android-jar /path/to/android-sdk/platforms/android-36/android.jar`를 지정할 수 있습니다. 이번 빌드는 JDK 21 / SDK Platform 36 / Build Tools 35.0.0으로 생성했으며 대상 API는 35, 최소 API는 26입니다.
 
 공개 저장소에는 배포한 APK의 서명 개인 키를 포함하지 않습니다. 새로 생성한 다른 키로 빌드한 APK는 기존 설치 앱에 업데이트할 수 없으므로 같은 앱의 업데이트 빌드에는 기존 개인 키가 필요합니다. `apk/`의 1.0.1은 앞서 배포한 1.0.0과 같은 키로 서명했습니다. 스토어 배포에는 별도의 배포 키를 사용하세요.
 
@@ -82,13 +94,13 @@ python3 scripts/test_native.py --jdk /path/to/jdk17 --android-jar /path/to/andro
 
 ## 검증 범위
 
-원본 CH9329 프로토콜·전송 테스트 31개, 안드로이드 JS 연결 테스트 5개, Java CH340 통신 속도/해제 패킷 검증과 CH340·CDC·CP210x·FTDI·HID 장치 감지 검사, Android SDK 35 컴파일, APK 서명·정렬 검사로 검증했습니다. 화면과 USB 응답을 연결한 가상 장치 검증 결과는 `VALIDATION.md`에 기록합니다.
+CH9329 프로토콜·전송·변경분 테스트 39개, 안드로이드 JS 연결 테스트 5개, Java CH340 통신 속도/해제 패킷 검증과 CH340·CDC·CP210x·FTDI·HID 장치 감지 검사, Android SDK 컴파일, APK 서명·정렬 검사로 검증했습니다. 화면과 USB 응답을 연결한 가상 장치 검증 결과는 `VALIDATION.md`에 기록합니다.
 
 **실제 갤럭시와 CH340/CH9329 케이블을 사용한 USB 권한·통신·Windows 입력 검증은 이 환경에서 수행하지 못했습니다.** 안드로이드 파일 선택·저장 창과 백그라운드 동작도 실기기에서 확인해야 합니다.
 
 ## 소스와 라이선스
 
-원본: [wnddud0818/Web-Virtual-Keyboard](https://github.com/wnddud0818/Web-Virtual-Keyboard), 커밋 `646b0363d4f5ef7946fc0b23033a18d2b834e376`의 `ch9329-web`.
+원본: [wnddud0818/Web-Virtual-Keyboard](https://github.com/wnddud0818/Web-Virtual-Keyboard)의 현재 `ch9329-web` 작업본(변경분 전송 포함). 저장소에서 빌드하면 `scripts/prepare_assets.py`가 `upstream/` 스냅샷을 갱신합니다.
 
 `upstream/`은 원본 CH9329 파일입니다. `scripts/prepare_assets.py`가 앱용 화면 문구·USB 연결·파일 저장 경로를 반영합니다. `android-bridge.js`와 `app/src/main/java/`가 추가된 안드로이드 연결부입니다. CH340 초기화는 원본 `ch340-usb.js`와 같은 칩 ID·설정 명령·통신 속도 계산을 사용합니다. CH340/CH341은 기존 연결부를 유지하며, 다른 지원 시리얼 칩은 `app/libs/usb-serial-for-android-3.11.0.jar`의 드라이버를 사용합니다. MIT 라이선스는 `licenses/USB-SERIAL-MIT.txt`와 APK 안에 포함합니다.
 

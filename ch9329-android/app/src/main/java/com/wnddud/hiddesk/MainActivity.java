@@ -166,7 +166,7 @@ public final class MainActivity extends Activity {
     }
     private String usbReport() {
         List<UsbDevice> all = allUsbDevices();
-        StringBuilder text = new StringBuilder("HID Desk 1.0.1\nAndroid " + Build.VERSION.RELEASE + "\n");
+        StringBuilder text = new StringBuilder("HID Desk 1.0.2\nAndroid " + Build.VERSION.RELEASE + "\n");
         android.content.pm.PackageInfo webview = WebView.getCurrentWebViewPackage();
         if (webview != null) text.append("WebView ").append(webview.versionName).append("\n");
         text.append("USB 호스트 지원: ").append(getPackageManager().hasSystemFeature(PackageManager.FEATURE_USB_HOST) ? "예" : "아니오");

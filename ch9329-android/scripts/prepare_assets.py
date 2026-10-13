@@ -1,13 +1,28 @@
 #!/usr/bin/env python3
-"""Create the Android assets from the pinned upstream CH9329 controller."""
+"""Package the current web controller, retaining a snapshot for standalone builds."""
 from pathlib import Path
 import shutil
+import xml.etree.ElementTree as ET
 
 root = Path(__file__).resolve().parents[1]
 source = root / 'upstream'
+workspace_web = root.parent / 'ch9329-web'
+web_files = ('index.html', 'app.js', 'protocol.js', 'ch340-usb.js', 'transfer.js', 'diff.js',
+             'decoder-source.js', 'decoder.html', 'decoder-installer.html', 'styles.css', 'LICENSE', 'README.md')
+if workspace_web.is_dir():
+    for name in web_files:
+        shutil.copy2(workspace_web / name, source / name)
+    for name in ('scripts', 'tests'):
+        for file in (workspace_web / name).rglob('*'):
+            if file.is_file() and '__pycache__' not in file.parts and file.name != '.DS_Store':
+                target = source / name / file.relative_to(workspace_web / name)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(file, target)
+shutil.copy2(source / 'decoder.html', root / 'Web-Virtual-Keyboard-platformio/web/decoder.html')
+version = ET.parse(root / 'app/src/main/AndroidManifest.xml').getroot().get('{http://schemas.android.com/apk/res/android}versionName')
 dest = root / 'app/src/main/assets/web'
 dest.mkdir(parents=True, exist_ok=True)
-for name in ('protocol.js', 'ch340-usb.js', 'transfer.js', 'decoder-source.js', 'decoder.html', 'decoder-installer.html', 'styles.css', 'LICENSE'):
+for name in ('protocol.js', 'ch340-usb.js', 'transfer.js', 'diff.js', 'decoder-source.js', 'decoder.html', 'decoder-installer.html', 'styles.css', 'LICENSE'):
     shutil.copy2(source / name, dest / name)
 
 def replace(text, before, after):
@@ -19,7 +34,7 @@ html = (source / 'index.html').read_text()
 html = replace(html, '<script src="app.js" defer></script>', '<script src="android-bridge.js" defer></script>\n<script src="app.js" defer></script>')
 html = replace(html, '별도 서버 없이 실행됩니다.', '인터넷 없이 실행됩니다.')
 html = replace(html, '<a href="README.md" target="_blank">사용 안내 ↗</a>', '<span>갤럭시 OTG · Android 앱 1.0</span>')
-html = html.replace('Android 앱 1.0', 'Android 앱 1.0.1')
+html = html.replace('Android 앱 1.0', f'Android 앱 {version}')
 html = replace(html, '이 컴퓨터에서 보내고, 연결된 컴퓨터에서 입력하세요.', '갤럭시에서 보내고, 연결된 컴퓨터에서 입력하세요.')
 html = replace(html, '<section id="panel-settings" class="panel" hidden>', '<section id="panel-settings" class="panel" hidden>\n          <p class="notice">USB 권한과 장치 목록은 화면 위의 “USB 확인 / 권한”에서 확인하세요. 아래 장치 설정은 케이블 연결과 CH9329 응답 확인 후 변경할 수 있습니다.</p>')
 html = replace(html, '<option value="serial">시리얼 포트 (Web Serial)</option>', '')

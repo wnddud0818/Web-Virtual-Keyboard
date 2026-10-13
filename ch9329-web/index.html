@@ -9,6 +9,7 @@
 <script src="protocol.js" defer></script>
 <script src="ch340-usb.js" defer></script>
 <script src="transfer.js" defer></script>
+<script src="diff.js" defer></script>
 <script src="decoder-source.js" defer></script>
 <script src="app.js" defer></script>
 </head>
@@ -69,7 +70,8 @@
         <section id="panel-files" class="panel" data-input="keyboard" hidden>
           <div class="card"><div class="card-heading"><div><span class="eyebrow">03 / TRANSFER</span><h2>파일을 키보드로 보내기</h2></div><span class="quiet-pill">WVK1 / WVK2</span></div>
             <label class="dropzone" id="dropzone"><span class="upload-icon">⇧</span><strong>파일을 놓거나 선택하세요</strong><span>텍스트, 코드, 이미지 등 · 최대 16 MiB</span><input id="fileInput" type="file"></label>
-            <div class="file-options"><label>전송 방식<select id="fileMode"><option value="encoded">파일 복원 / Base64 (자동 압축)</option><option value="raw">원문 텍스트 (ASCII만)</option></select></label><button id="prepareFile" class="secondary">전송 준비</button></div>
+            <div class="file-options"><label>전송 방식<select id="fileMode"><option value="encoded">파일 복원 / Base64 (자동 압축)</option><option value="diff">변경분 전송 (UTF-8 텍스트)</option><option value="raw">원문 텍스트 (ASCII만)</option></select></label><button id="prepareFile" class="secondary">전송 준비</button></div>
+            <div id="baseFileField" class="base-file-field" hidden><label for="baseFileInput">수정 전 기준 파일<input id="baseFileInput" type="file" aria-describedby="baseFileHint"></label><p id="baseFileHint" class="hint">위에서 수정 후 파일을 선택하고, 여기에 대상 PC에 있는 수정 전 파일과 동일한 파일을 선택하세요. 한글·BOM·줄바꿈을 그대로 보존합니다. UTF-8이 아니거나 변경분 전송이 불리하면 전체 파일로 전송합니다. 대상 PC에는 새 디코더를 준비하세요.</p></div>
             <div id="fileSummary" class="file-summary">파일을 선택하면 전송량과 예상 시간을 확인할 수 있어요.</div>
             <div id="resumeField" class="resume-field" hidden><label>시작 청크<div class="number-unit"><input id="resumeChunk" type="number" min="1" value="1" inputmode="numeric" aria-describedby="resumeHint"><span id="resumeTotal">/ 0</span></div></label><p id="resumeHint" class="hint">전송이 끊기면 이어 보낼 청크가 자동으로 채워집니다. 대상 디코더 입력창 맨 끝의 끝까지 입력되지 않은 줄을 지우고, 마지막 C|번호| 다음 번호인지 확인한 뒤 다시 전송하세요. 1은 머리글부터 전체를 다시 보냅니다.</p></div>
             <button id="sendFile" class="primary" data-device disabled>파일 전송 ↗</button><p class="hint">파일 복원 모드는 대상 PC의 decoder.html 입력창을 선택하세요. 전송 완료 후 “검증하고 열기”를 누르면 원본을 복원합니다.</p>

@@ -10,7 +10,7 @@
     { name:'키보드 + 마우스', keyboard:true, mouse:true, description:'키보드와 마우스가 함께 인식되는 복합 장치입니다. 멀티미디어 키를 포함하고 사용자 정의 HID 기능은 제외됩니다.' },
     { name:'사용자 정의 HID만', keyboard:false, mouse:false, description:'데이터 통신용 사용자 정의 HID만 인식합니다. 이 웹 화면의 키보드·마우스·파일 타이핑은 사용할 수 없으며, 설정 읽기와 모드 변경은 계속 사용할 수 있습니다.' }
   ];
-  let busy = false, aborter = null, info = null, config = null, prepared = null, selectedFile = null;
+  let busy = false, aborter = null, info = null, config = null, prepared = null, selectedFile = null, selectedBase = null;
   let fileRevision = 0, toastTimer, presets = [], modePending = false, canStop = true;
   // Android Chrome exposes navigator.serial for Bluetooth only, so wired CH340 goes through WebUSB.
   const android = /Android/i.test(navigator.userAgent);
@@ -52,7 +52,10 @@
     $('deviceBaud').disabled = busy;
     $('backupConfig').disabled = !config || busy;
     $('sendFile').disabled = !available || !prepared || !capabilities?.keyboard;
-    $('prepareFile').disabled = busy || !selectedFile;
+    $('prepareFile').disabled = busy || !selectedFile || ($('fileMode').value === 'diff' && !selectedBase);
+    $('fileInput').disabled = busy;
+    $('baseFileInput').disabled = busy;
+    $('fileMode').disabled = busy;
     $('resumeChunk').disabled = busy;
     $('keyDelay').disabled = busy || $('typingMode').value === 'fast'; $('startDelay').disabled = busy;
     $('typingMode').disabled = busy;
@@ -298,7 +301,7 @@
       if (offset) resume = `\n청크 ${$('resumeChunk').value}부터 이어 보내기 · ${(plan.text.length - offset).toLocaleString()}자 · 최소 약 ${estimate(plan.text.slice(offset))}`;
     } catch (error) { resume = '\n' + error.message; }
     $('resumeField').hidden = !chunks; $('resumeChunk').max = String(chunks); $('resumeTotal').textContent = '/ ' + chunks.toLocaleString();
-    $('fileSummary').textContent = `${plan.name} · ${bytesLabel(plan.original)}\n${plan.mode} · ${chunks ? '청크 ' + chunks.toLocaleString() + '개 · ' : ''}${plan.text.length.toLocaleString()}자 · 통신·입력 간격 기준 최소 약 ${estimate(plan.text)} (실제는 더 걸릴 수 있음)${plan.saved ? '\n압축으로 ' + plan.saved.toLocaleString() + '자 절약' : ''}${resume}\n대상: ${plan.mode === '원문 텍스트' ? '빈 일반 텍스트 편집기' : 'decoder.html의 데이터 입력창'}`;
+    $('fileSummary').textContent = `${plan.name} · ${bytesLabel(plan.original)}\n${plan.mode} · ${chunks ? '청크 ' + chunks.toLocaleString() + '개 · ' : ''}${plan.text.length.toLocaleString()}자 · 통신·입력 간격 기준 최소 약 ${estimate(plan.text)} (실제는 더 걸릴 수 있음)${plan.saved ? '\n압축으로 ' + plan.saved.toLocaleString() + '자 절약' : ''}${plan.note ? '\n' + plan.note : ''}${resume}\n대상: ${plan.mode === '원문 텍스트' ? '빈 일반 텍스트 편집기' : 'decoder.html의 데이터 입력창'}`;
   }
   // Point the next attempt at the chunk the interruption hit. Its partial line is removed on the target by hand.
   function resumable(plan, at, error) {
@@ -318,18 +321,23 @@
   $('keyDelay').addEventListener('change', renderFileSummary);
   $('resumeChunk').addEventListener('change', renderFileSummary);
   function selectFile(file) {
+    if (busy) return;
     fileRevision++; selectedFile = file || null; prepared = null;
     $('resumeChunk').value = '1'; $('resumeField').hidden = true;
-    $('fileSummary').textContent = file ? `${file.name} · ${bytesLabel(file.size)} · “전송 준비”를 눌러 주세요.` : '파일을 선택해 주세요.'; sync();
+    const diff = $('fileMode').value === 'diff';
+    $('baseFileField').hidden = !diff;
+    $('fileSummary').textContent = file ? `${file.name} · ${bytesLabel(file.size)} · ${diff && !selectedBase ? '수정 전 기준 파일을 선택해 주세요.' : '“전송 준비”를 눌러 주세요.'}` : '파일을 선택해 주세요.'; sync();
   }
   $('fileInput').addEventListener('change', () => selectFile($('fileInput').files[0]));
   $('fileMode').addEventListener('change', () => selectFile(selectedFile));
+  $('baseFileInput').addEventListener('change', () => { selectedBase = $('baseFileInput').files[0] || null; selectFile(selectedFile); });
   $('dropzone').addEventListener('dragover', event => { event.preventDefault(); $('dropzone').classList.add('dragover'); });
   $('dropzone').addEventListener('dragleave', () => $('dropzone').classList.remove('dragover'));
   $('dropzone').addEventListener('drop', event => { event.preventDefault(); $('dropzone').classList.remove('dragover'); selectFile(event.dataTransfer.files[0]); });
   $('prepareFile').addEventListener('click', async () => {
     if (busy || !selectedFile) return;
-    const revision = fileRevision, file = selectedFile, mode = $('fileMode').value;
+    const revision = fileRevision, file = selectedFile, base = selectedBase, mode = $('fileMode').value;
+    if (mode === 'diff' && !base) { notify('수정 전 기준 파일을 선택해 주세요.', true); return; }
     busy = true; prepared = null; sync();
     $('fileSummary').textContent = '파일을 읽고 전송량을 계산하고 있습니다…';
     try {
@@ -340,6 +348,12 @@
         if (bytes.some(b => b !== 9 && b !== 10 && b !== 13 && (b < 32 || b > 126))) throw new Error('원문 모드는 ASCII 텍스트만 지원합니다. 파일 복원 모드를 선택하세요.');
         plan = { text:normalizeText(new TextDecoder().decode(bytes)), mode:'원문 텍스트', saved:0 };
         if (!plan.text) throw new Error('빈 파일은 파일 복원 모드로 보내 주세요.');
+      } else if (mode === 'diff') {
+        if (base.size > 16 * 1024 * 1024) throw new Error('기준 파일은 최대 16 MiB까지 지원합니다.');
+        const fast = $('typingMode').value === 'fast';
+        plan = await WVKDiff.prepare(new Uint8Array(await base.arrayBuffer()), bytes, file.name, base.name, text => textReportCount(text, fast));
+        if (revision !== fileRevision) return;
+        if (plan.unchanged) { $('fileSummary').textContent = '기준 파일과 수정본이 같습니다. 전송할 변경분이 없습니다.'; return; }
       } else plan = await WVK.prepare(bytes, file.name);
       if (revision !== fileRevision) return;
       prepared = { ...plan, name:file.name, original:file.size, starts:mode === 'raw' ? [] : WVK.chunkStarts(plan.text) }; renderFileSummary();
@@ -354,7 +368,7 @@
       try { await transmit(plan.text.slice(offset), signal, false, sent); }
       catch (error) { throw resumable(plan, offset + sent.done, error); }
       if (offset && prepared === plan) { $('resumeChunk').value = '1'; renderFileSummary(); }
-      return plan.mode === '원문 텍스트' ? '전송 완료. 대상 편집기에서 내용을 확인하세요.' : `${offset ? '이어 보내기' : '전송'} 완료. 대상 디코더에서 검증하고 파일을 저장하세요.`;
+      return plan.mode === '원문 텍스트' ? '전송 완료. 대상 편집기에서 내용을 확인하세요.' : plan.patch ? '변경분 전송 완료. 대상 디코더에서 수정 전 기준 파일을 선택하고 “검증하고 열기”를 눌러 저장하세요.' : `${offset ? '이어 보내기' : '전송'} 완료. 대상 디코더에서 검증하고 파일을 저장하세요.`;
     }, { caps:true, delay:true });
   });
   function download(name, value, type = 'application/json') {

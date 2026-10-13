@@ -17,11 +17,12 @@
     return btoa(result);
   }
   function safeFilename(name) { return String(name || 'download.bin').replace(/[^\x20-\x7e]|[\\/:*?"<>|]/g, '_').trim().slice(0, 128) || 'download.bin'; }
-  async function envelope(bytes, name, original = null, chunkSize = 768) {
+  async function envelope(bytes, name, original = null, chunkSize = 768, content = null) {
     const chunks = Math.ceil(bytes.length / chunkSize);
     if (chunks > 999999) throw new Error('파일이 너무 큽니다.');
     let result = `${original ? 'WVK2' : 'WVK1'}\nNAME=${safeFilename(name)}\nSIZE=${bytes.length}\nCHUNKS=${chunks}\nSHA256=${await sha256(bytes)}\n`;
     if (original) result += `ENCODING=gzip\nORIGINAL_SIZE=${original.length}\nORIGINAL_SHA256=${await sha256(original)}\n`;
+    if (content) result += `CONTENT=${content}\n`;
     result += '\n';
     for (let i = 0; i < chunks; i++) {
       const part = bytes.subarray(i * chunkSize, (i + 1) * chunkSize);
@@ -29,14 +30,14 @@
     }
     return result + 'END\n';
   }
-  async function prepare(bytes, name, compress = true) {
+  async function prepare(bytes, name, compress = true, content = null) {
     if (bytes.length > 16 * 1024 * 1024) throw new Error('한 번에 최대 16 MiB를 준비할 수 있습니다. 키보드 전송에는 작은 파일을 권장합니다.');
-    const plain = await envelope(bytes, name);
+    const plain = await envelope(bytes, name, null, 768, content);
     if (compress && typeof CompressionStream === 'function') {
       try {
         const zipped = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer());
         if (zipped.length < bytes.length) {
-          const compressed = await envelope(zipped, name, bytes);
+          const compressed = await envelope(zipped, name, bytes, 768, content);
           if (compressed.length < plain.length) return { text:compressed, mode:'WVK2 · gzip', original:bytes.length, saved:plain.length - compressed.length };
         }
       } catch { /* Optional compression can fall back to a fully verified WVK1. */ }
