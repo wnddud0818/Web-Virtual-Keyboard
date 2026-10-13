@@ -1,5 +1,7 @@
 # Web Virtual Keyboard
 
+> **갤럭시용 CH9329 앱:** [APK 1.0.1 다운로드](https://github.com/wnddud0818/Web-Virtual-Keyboard/raw/refs/heads/main/ch9329-android/apk/HID-Desk-Android-1.0.1.apk) · [안드로이드 프로젝트 / 사용 안내](ch9329-android/README.md). USB 상태 확인과 권한 요청을 포함한 오프라인 앱이며, Android 8.0 이상과 USB OTG가 필요합니다.
+
 Web Virtual Keyboard는 [LILYGO T-Dongle-S3](https://lilygo.cc/products/t-dongle-s3)를 Wi-Fi로 제어하는 USB 키보드로 바꿔 줍니다. 같은 네트워크에 있는 브라우저에서 자유 입력 텍스트, 재사용 프리셋, 텍스트 파일, 그리고 검증값이 포함된 텍스트로 변환한 모든 바이너리 파일을 다른 컴퓨터에 타이핑할 수 있습니다.
 
 일반 펌웨어는 **USB HID 키보드만** 노출합니다. 대상 컴퓨터에 USB 시리얼, 대용량 저장장치, 네트워크 인터페이스로는 나타나지 않습니다. 진단 로그는 T-Dongle-S3의 외부 UART 커넥터에서 계속 확인할 수 있습니다.

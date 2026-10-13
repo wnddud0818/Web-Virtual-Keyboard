@@ -1,0 +1,9 @@
+{
+  "name": "hid-desk-android-checks",
+  "private": true,
+  "scripts": {
+    "test": "node --test upstream/tests/*.test.cjs tests/*.test.cjs",
+    "test:ui": "node tests/app-dom-smoke.cjs"
+  },
+  "devDependencies": { "jsdom": "26.1.0" }
+}
