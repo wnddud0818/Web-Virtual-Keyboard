@@ -11,7 +11,7 @@ env=os.environ.copy();env['LD_LIBRARY_PATH']=str(jdk/'lib')+os.pathsep+str(jdk/'
 classes=root/'build/native-test-classes';classes.mkdir(parents=True,exist_ok=True)
 dependency=root/'app/libs/usb-serial-for-android-3.11.0.jar'
 main=root/'app/src/main/java/com/wnddud/hiddesk'
-sources=list((root/'tests/native-stubs').rglob('*.java'))+[main/'Ch340Math.java',main/'Ch340Port.java',main/'SerialUsbPort.java',root/'tests/Ch340MathTest.java',root/'tests/UsbDetectionTest.java']
+sources=list((root/'tests/native-stubs').rglob('*.java'))+[main/'Ch340Math.java',main/'Ch340Port.java',main/'SerialUsbPort.java',main/'KeyboardBatch.java',root/'tests/Ch340MathTest.java',root/'tests/UsbDetectionTest.java',root/'tests/KeyboardBatchTest.java']
 subprocess.run([str(jdk/'bin/javac'),'--release','8','-encoding','UTF-8','-classpath',os.pathsep.join(map(str,[platform,dependency])),'-d',str(classes),*map(str,sources)],check=True,env=env)
-for test in ('Ch340MathTest','UsbDetectionTest'):
+for test in ('Ch340MathTest','UsbDetectionTest','KeyboardBatchTest'):
     subprocess.run([str(jdk/'bin/java'),'-cp',os.pathsep.join(map(str,[classes,dependency,platform])),test],check=True,env=env)

@@ -8,8 +8,8 @@ const {JSDOM} = require(process.env.JSDOM_MODULE || 'jsdom');
 
 (async () => {
   const assets = path.resolve(__dirname,'../app/src/main/assets/web');
-  let w, pendingRead = null, session = 0, opened = false, failOpen = false;
-  const queue = [], writes = [], saves = [], errors = [], results = [];
+  let w, pendingRead = null, session = 0, opened = false, failOpen = false, batchRequests = 0;
+  const queue = [], writes = [], saves = [], errors = [], results = [], batches = new Map();
   const config = new Uint8Array(50); config[0] = 0; config[5] = 0x25; config[6] = 0x80;
   const reply = (id,value,error) => setTimeout(() => w.AndroidHid.receive({id,value,error}),0);
   const flush = () => { if (pendingRead && queue.length) { const id = pendingRead; pendingRead = null; reply(id,{data:Buffer.from(queue.shift()).toString('base64')}); } };
@@ -36,6 +36,22 @@ const {JSDOM} = require(process.env.JSDOM_MODULE || 'jsdom');
         const response = w.CH9329.packet(bytes[3] | 0x80,data,bytes[2]);
         queue.push(response.slice(0,3),response.slice(3)); flush(); reply(id,true); break;
       }
+      case 'keyboardBatch': {
+        batchRequests++;
+        assert.equal(args.session,session);
+        const data = Buffer.from(args.data,'base64'), batch = {cancelled:false}; batches.set(args.token,batch);
+        (async () => {
+          let completed = 0;
+          for (let n = 0; n < data.length && !batch.cancelled; n += 9) {
+            writes.push(w.CH9329.packet(2,[data[n],0,...data.subarray(n+1,n+7)],args.address)); completed++;
+            await new Promise(resolve => setTimeout(resolve,(data[n+7]<<8|data[n+8]) || 1));
+          }
+          batches.delete(args.token); reply(id,{completed,cancelled:batch.cancelled});
+        })(); break;
+      }
+      case 'cancelBatch':
+        if (args.session === session && batches.has(args.token)) batches.get(args.token).cancelled = true;
+        reply(id,true); break;
       case 'close': if (args.session === session) { opened = false; queue.length = 0; if (pendingRead) { reply(pendingRead,{done:true}); pendingRead = null; } } reply(id,true); break;
       case 'save': saves.push(args); reply(id,true); break;
       default: throw new Error(method);
@@ -55,6 +71,12 @@ const {JSDOM} = require(process.env.JSDOM_MODULE || 'jsdom');
   assert.equal($('connectionBadge').textContent,'연결됨'); assert.equal($('connectionError').hidden,true); results.push('native open error and reconnect handshake');
   writes.length = 0; $('text').value = 'A%\r\nx'; $('sendText').click(); await wait(() => !$('sendText').disabled);
   assert.equal(writes.filter(b => b[3] === 2 && b[7] !== 0).length,4); assert.equal($('progressPercent').textContent,'100%'); results.push('ASCII typing, CRLF, key releases and progress');
+  assert.ok(batchRequests > 0,'fast controller uses native batches');
+  const beforeCompatible = batchRequests;
+  change('typingMode','compatible'); $('keyDelay').value = '2'; writes.length = 0;
+  $('text').value = 'aA%a'; $('sendText').click(); await wait(() => !$('sendText').disabled);
+  assert.equal(batchRequests,beforeCompatible); assert.equal(writes.filter(b=>b[3]===2).length,9);
+  change('typingMode','fast'); results.push('compatible mode keeps per-key releases and delay without batching');
   change('textMode','korean'); writes.length = 0; $('text').value = 'Hi 간아!'; $('sendText').click(); await wait(() => !$('sendText').disabled);
   assert.equal(writes.filter(b => b[3] === 2 && b[5] === 64).length,4); assert.ok($('jobDetail').textContent.includes('영문(A)')); results.push('Hangul and English mixed reports');
   writes.length = 0; $('text').value = '한글'.repeat(20); $('sendText').click(); await wait(() => writes.some(b => b[3] === 2 && b[5] === 64));

@@ -31,6 +31,13 @@ public final class MainActivity extends Activity {
     private UsbManager usb;
     private volatile SerialUsbPort port;
     private volatile int session;
+    private static final class BatchRequest {
+        final String token;
+        final int session;
+        final KeyboardBatch engine;
+        BatchRequest(String token, int session, KeyboardBatch engine) { this.token = token; this.session = session; this.engine = engine; }
+    }
+    private volatile BatchRequest keyboardBatch;
     private int nextSession;
     private ValueCallback<Uri[]> fileCallback;
     private String permissionId, permissionDevice;
@@ -158,15 +165,16 @@ public final class MainActivity extends Activity {
     }
     private void refreshUsbStatus() {
         if (destroyed || usbStatus == null) return;
-        List<UsbDevice> all = allUsbDevices(), eligible = serialDevices();
+        List<UsbDevice> all = allUsbDevices(), eligible = new ArrayList<>();
+        for (UsbDevice device : all) if (SerialUsbPort.supports(device)) eligible.add(device);
         String text = all.isEmpty() ? "USB 감지 0개" : "USB " + all.size() + "개 · 연결 지원 " + eligible.size() + "개";
         if (permissionId != null) text += "\nUSB 권한 요청 중";
         else if (eligible.stream().anyMatch(usb::hasPermission)) text += "\nUSB 권한 허용됨";
-        usbStatus.setText(text);
+        if (!text.contentEquals(usbStatus.getText())) usbStatus.setText(text);
     }
     private String usbReport() {
         List<UsbDevice> all = allUsbDevices();
-        StringBuilder text = new StringBuilder("HID Desk 1.0.2\nAndroid " + Build.VERSION.RELEASE + "\n");
+        StringBuilder text = new StringBuilder("HID Desk 1.0.3\nAndroid " + Build.VERSION.RELEASE + "\n");
         android.content.pm.PackageInfo webview = WebView.getCurrentWebViewPackage();
         if (webview != null) text.append("WebView ").append(webview.versionName).append("\n");
         text.append("USB 호스트 지원: ").append(getPackageManager().hasSystemFeature(PackageManager.FEATURE_USB_HOST) ? "예" : "아니오");
@@ -218,7 +226,6 @@ public final class MainActivity extends Activity {
     private JSONObject object(String key, Object value) throws JSONException { return new JSONObject().put(key, value); }
     private void result(String id, Object value, String error) {
         if (destroyed) return;
-        main.post(this::refreshUsbStatus);
         if (id.startsWith("native:")) { toast(error == null ? "USB 권한이 허용됐습니다. 화면의 케이블 연결을 누르세요." : error); return; }
         try {
             JSONObject reply = new JSONObject().put("id", id).put("value", value == null ? JSONObject.NULL : value);
@@ -231,6 +238,39 @@ public final class MainActivity extends Activity {
         SerialUsbPort current = port;
         if (current == null || current.isClosed() || args.optInt("session", -1) != session) throw new IOException("USB 연결이 종료되었습니다. 다시 연결해 주세요.");
         return current;
+    }
+    private void cancelKeyboardBatch() {
+        BatchRequest request = keyboardBatch;
+        if (request != null) request.engine.cancel();
+    }
+    private void startKeyboardBatch(String id, JSONObject args) {
+        final BatchRequest request;
+        final SerialUsbPort current;
+        try {
+            synchronized (this) {
+                current = forSession(args);
+                if (!visible || keyboardBatch != null) throw new IOException("키 입력 작업을 시작할 수 없습니다.");
+                request = new BatchRequest(args.getString("token"), session,
+                    new KeyboardBatch(Base64.decode(args.getString("data"), Base64.DEFAULT), args.getInt("address")));
+                // Register before queueing so Stop also cancels a job that has not started.
+                keyboardBatch = request;
+            }
+        } catch (Exception error) { result(id, null, error.getMessage()); return; }
+        io.execute(() -> {
+            Object value = null; String error = null;
+            try {
+                int completed = request.engine.run(current::write);
+                value = object("completed", completed).put("cancelled", request.engine.isCancelled());
+            } catch (Exception failure) {
+                error = failure.getMessage() == null ? "키 입력 통신 오류입니다." : failure.getMessage();
+                try { value = object("completed", request.engine.completedCount()); } catch (JSONException ignored) {}
+                current.close(true); if (port == current) port = null;
+                main.post(this::refreshUsbStatus);
+            } finally {
+                if (keyboardBatch == request) keyboardBatch = null;
+            }
+            result(id, value, error);
+        });
     }
     public final class Bridge {
         @JavascriptInterface public void postMessage(String message) {
@@ -245,6 +285,12 @@ public final class MainActivity extends Activity {
             } catch (JSONException e) { return; }
             if ("select".equals(method)) { main.post(() -> selectDevice(id)); return; }
             if ("save".equals(method)) { main.post(() -> saveFile(id, args)); return; }
+            if ("keyboardBatch".equals(method)) { startKeyboardBatch(id, args); return; }
+            if ("cancelBatch".equals(method)) {
+                BatchRequest request = keyboardBatch;
+                if (request != null && args.optInt("session", -1) == request.session && request.token.equals(args.optString("token"))) request.engine.cancel();
+                result(id, true, null); return;
+            }
             ExecutorService executor = "read".equals(method) ? reads : io;
             executor.execute(() -> {
                 try {
@@ -259,31 +305,44 @@ public final class MainActivity extends Activity {
                             fresh.open(args.getInt("baud"));
                             if (!visible || destroyed) { fresh.close(false); throw new IOException("앱이 백그라운드로 이동했습니다. 다시 연결하세요."); }
                             session = ++nextSession; port = fresh;
+                            main.post(MainActivity.this::refreshUsbStatus);
                             value = object("session", session); break;
                         }
                         case "read": {
                             if (args.optInt("session", -1) != session || port == null || port.isClosed()) value = object("done", true);
                             else {
-                                byte[] bytes = forSession(args).read();
-                                value = bytes == null ? object("done", true) : object("data", Base64.encodeToString(bytes, Base64.NO_WRAP));
+                                for (;;) {
+                                    byte[] bytes = forSession(args).read();
+                                    BatchRequest request = keyboardBatch;
+                                    if (bytes != null && request != null && request.session == args.optInt("session", -1)) {
+                                        request.engine.receive(bytes); continue;
+                                    }
+                                    value = bytes == null ? object("done", true) : object("data", Base64.encodeToString(bytes, Base64.NO_WRAP));
+                                    break;
+                                }
                             }
                             break;
                         }
                         case "write": {
+                            if (keyboardBatch != null) throw new IOException("키 입력 묶음이 진행 중입니다.");
                             byte[] bytes = Base64.decode(args.getString("data"), Base64.DEFAULT);
                             if (bytes.length == 0 || bytes.length > 4096) throw new IOException("USB 패킷 크기를 확인하세요.");
                             forSession(args).write(bytes); value = true; break;
                         }
                         case "close": {
                             if (args.optInt("session", -1) == session && port != null) { port.close(false); port = null; }
+                            main.post(MainActivity.this::refreshUsbStatus);
                             value = true; break;
                         }
                         default: throw new IOException("지원하지 않는 앱 명령입니다.");
                     }
                     result(id, value, null);
                 } catch (Exception error) {
+                    BatchRequest request = keyboardBatch;
+                    if (request != null && request.session == args.optInt("session", -1)) request.engine.fail(new IOException("USB 읽기가 중단되었습니다.", error));
                     // A serial timeout/error never repeats a keystroke.
                     if (("write".equals(method) || "read".equals(method)) && args.optInt("session", -1) == session && port != null) { port.close(true); port = null; }
+                    main.post(MainActivity.this::refreshUsbStatus);
                     result(id, null, error.getMessage() == null ? "USB 통신 오류입니다." : error.getMessage());
                 }
             });
@@ -318,9 +377,10 @@ public final class MainActivity extends Activity {
         int flags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0);
         PendingIntent intent = PendingIntent.getBroadcast(this, device.getDeviceId(), callback, flags);
         try { usb.requestPermission(device, intent); }
-        catch (Exception e) { permissionId = null; permissionDevice = null; result(id, null, "USB 권한 요청에 실패했습니다."); }
+        catch (Exception e) { permissionId = null; permissionDevice = null; refreshUsbStatus(); result(id, null, "USB 권한 요청에 실패했습니다."); }
     }
     private void selected(String id, UsbDevice device) {
+        main.post(this::refreshUsbStatus);
         try { result(id, new JSONObject().put("device", device.getDeviceName()).put("vendorId", device.getVendorId()).put("productId", device.getProductId()).put("driver", SerialUsbPort.driverName(device)), null); }
         catch (JSONException e) { result(id, null, "장치 정보를 읽지 못했습니다."); }
     }
@@ -334,6 +394,7 @@ public final class MainActivity extends Activity {
             if (PERMISSION.equals(intent.getAction()) && permissionId != null && permissionId.equals(intent.getStringExtra("requestId"))) {
                 String id = permissionId, name = permissionDevice;
                 permissionId = null; permissionDevice = null;
+                refreshUsbStatus();
                 UsbDevice device = usb.getDeviceList().get(name);
                 if (device != null && usb.hasPermission(device)) selected(id, device);
                 else result(id, null, "USB 사용 권한이 거부되었거나 케이블이 분리되었습니다.");
@@ -346,6 +407,8 @@ public final class MainActivity extends Activity {
                 UsbDevice detached = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
                 SerialUsbPort current = port;
                 if (current != null && detached != null && current.deviceName().equals(detached.getDeviceName())) {
+                    BatchRequest request = keyboardBatch;
+                    if (request != null) request.engine.fail(new IOException("USB 케이블이 분리되었습니다."));
                     io.execute(() -> { current.close(false); if (port == current) port = null; });
                     web.evaluateJavascript("window.AndroidHid&&window.AndroidHid.disconnected('USB 케이블이 분리되었습니다. 다시 연결하세요.');", null);
                 }
@@ -396,6 +459,7 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onPause() {
         super.onPause();
+        cancelKeyboardBatch();
         web.evaluateJavascript("window.AndroidHid&&window.AndroidHid.background();", null);
     }
     @Override protected void onStop() {
@@ -416,6 +480,7 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onDestroy() {
         destroyed = true;
+        cancelKeyboardBatch();
         if (live.get() == this) live.clear();
         if (receiverRegistered) unregisterReceiver(receiver);
         if (chooser != null) chooser.dismiss();

@@ -52,6 +52,37 @@ app = replace(app, 'const apis = { serial:!!navigator.serial, usb:!!navigator.us
               'const native = !!window.AndroidHid?.available;\n  const apis = { serial:!native && !!navigator.serial, usb:(native || !!navigator.usb) && !!window.CH340Usb };')
 app = replace(app, "usb:'USB 직접 (WebUSB)'", "usb:'USB 직접 (안드로이드)'")
 app = replace(app, 'const supported = window.isSecureContext && (apis.serial || apis.usb);', 'const supported = (native || window.isSecureContext) && (apis.serial || apis.usb);')
+acknowledge = '''        if (report.ime) ime = report.ime;
+        done += report.advance; sent.done = done;
+        if (done === text.length || performance.now() - lastPaint > 80) {
+          progress(done, text.length); lastPaint = performance.now();
+          const remaining = done ? ((lastPaint - started) / done) * (text.length - done) : 0;
+          const rate = done / Math.max(0.001, (lastPaint - started) / 1000);
+          $('jobDetail').textContent = `초당 ${rate.toFixed(1)}자 · 남은 시간 약 ${duration(remaining / 1000)}`;
+        }'''
+loop = '''      for (const report of mixed ? koreanTextReports(text, fast) : textReports(text, fast)) {
+        check(signal);
+        await client.keyboard(report.modifier, report.keys);
+''' + acknowledge + '''
+        if (delay && report.advance) await pause(delay, signal);
+        if (report.wait) await pause(report.wait, signal);
+      }'''
+native_loop = '''      const acknowledged = (report, paint = true) => {
+''' + acknowledge.replace('if (done === text.length || performance.now() - lastPaint > 80)', 'if (paint && (done === text.length || performance.now() - lastPaint > 80))') + '''
+      };
+      const reports = mixed ? koreanTextReports(text, fast) : textReports(text, fast);
+      if (native && fast) {
+        await AndroidHid.transmitReports(client, reports, signal, acknowledged);
+      } else {
+        for (const report of reports) {
+          check(signal);
+          await client.keyboard(report.modifier, report.keys);
+          acknowledged(report);
+          if (delay && report.advance) await pause(delay, signal);
+          if (report.wait) await pause(report.wait, signal);
+        }
+      }'''
+app = replace(app, loop, native_loop)
 app = replace(app, "  function rememberBaud(baud)", "  window.addEventListener('hid-background', () => {\n    if (busy && canStop) aborter?.abort(stopped());\n  });\n  function rememberBaud(baud)")
 app = replace(app, "    const url = URL.createObjectURL(new Blob([value], { type }));", "    if (native) {\n      AndroidHid.saveText(name, value, type).then(() => notify('파일을 저장했습니다.')).catch(error => notify(error.message, true));\n      return;\n    }\n    const url = URL.createObjectURL(new Blob([value], { type }));")
 app = replace(app, '브라우저의 USB 사용 권한 요청을 허용했는지', '앱의 USB 사용 권한 요청을 허용했는지')

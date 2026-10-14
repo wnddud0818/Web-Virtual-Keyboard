@@ -121,19 +121,27 @@
     let done = 0, lastPaint = 0, ime = 'english'; const started = performance.now();
     progress(0, text.length);
     try {
-      for (const report of mixed ? koreanTextReports(text, fast) : textReports(text, fast)) {
-        check(signal);
-        await client.keyboard(report.modifier, report.keys);
+      const acknowledged = (report, paint = true) => {
         if (report.ime) ime = report.ime;
         done += report.advance; sent.done = done;
-        if (done === text.length || performance.now() - lastPaint > 80) {
+        if (paint && (done === text.length || performance.now() - lastPaint > 80)) {
           progress(done, text.length); lastPaint = performance.now();
           const remaining = done ? ((lastPaint - started) / done) * (text.length - done) : 0;
           const rate = done / Math.max(0.001, (lastPaint - started) / 1000);
           $('jobDetail').textContent = `초당 ${rate.toFixed(1)}자 · 남은 시간 약 ${duration(remaining / 1000)}`;
         }
-        if (delay && report.advance) await pause(delay, signal);
-        if (report.wait) await pause(report.wait, signal);
+      };
+      const reports = mixed ? koreanTextReports(text, fast) : textReports(text, fast);
+      if (native && fast) {
+        await AndroidHid.transmitReports(client, reports, signal, acknowledged);
+      } else {
+        for (const report of reports) {
+          check(signal);
+          await client.keyboard(report.modifier, report.keys);
+          acknowledged(report);
+          if (delay && report.advance) await pause(delay, signal);
+          if (report.wait) await pause(report.wait, signal);
+        }
       }
     } finally {
       if (client.connected) {
