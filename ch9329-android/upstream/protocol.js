@@ -101,6 +101,8 @@
       if ((current[0] & 0x7f) > 3 || (current[1] & 0x7f) !== 0) throw new Error('현재 모드 구성을 확인할 수 없습니다. 프로토콜 모드 설정이 필요합니다.');
       const entries = [
         { ...identity?.manufacturer, type:0, flag:4, label:'제조사명' },
+        // Omitted product keeps the effective setting for older two-field callers.
+        ...(identity?.product === undefined ? [] : [{ ...identity.product, type:1, flag:2, label:'제품명' }]),
         { ...identity?.serialNumber, type:2, flag:1, label:'시리얼 번호' }
       ];
       // Validate the entire form before making any persistent write. Restrict
@@ -112,11 +114,9 @@
       }
       const updated = current.slice(); updated[0] &= 0x7f; updated[1] = 0;
       // Byte 36: bit 7 enables custom strings, bits 2/1/0 select vendor/product/SN.
-      // Keep the product string's effective state, including when bit 7 was off.
-      updated[36] &= ~0x85;
-      if (!(current[36] & 0x80)) updated[36] &= ~2;
-      for (const entry of entries) if (entry.enabled) updated[36] |= entry.flag;
-      if (updated[36] & 7) updated[36] |= 0x80;
+      let flags = current[36] & 0x80 ? current[36] & 7 : 0;
+      for (const entry of entries) flags = entry.enabled ? flags | entry.flag : flags & ~entry.flag;
+      updated[36] = (current[36] & 0x78) | flags | (flags ? 0x80 : 0);
       let attempted = false, stage = '';
       try {
         for (const entry of entries) {

@@ -55,7 +55,7 @@
     $('deviceBaud').disabled = busy;
     $('backupConfig').disabled = !config || busy;
     $('saveUsbIdentity').disabled = !available || !usbIdentity;
-    for (const [toggle, field] of [['usbManufacturerEnabled','usbManufacturer'], ['usbSerialEnabled','usbSerialNumber']]) {
+    for (const [toggle, field] of [['usbManufacturerEnabled','usbManufacturer'], ['usbProductEnabled','usbProduct'], ['usbSerialEnabled','usbSerialNumber']]) {
       $(toggle).disabled = !available || !usbIdentity;
       $(field).disabled = !available || !usbIdentity || !$(toggle).checked;
     }
@@ -481,8 +481,8 @@
   $('readConfig').addEventListener('click', () => exclusive('장치 설정 읽기', async () => { info = await client.info(); config = await client.config(); renderConfig(); return '현재 장치 설정을 읽었습니다. USB 인터페이스 구성은 대상 PC에서 확인하세요.'; }, { usb:false }));
   function clearUsbIdentity() {
     usbIdentity = null;
-    $('usbManufacturer').value = ''; $('usbSerialNumber').value = '';
-    $('usbManufacturerEnabled').checked = false; $('usbSerialEnabled').checked = false;
+    $('usbManufacturer').value = ''; $('usbProduct').value = ''; $('usbSerialNumber').value = '';
+    $('usbManufacturerEnabled').checked = false; $('usbProductEnabled').checked = false; $('usbSerialEnabled').checked = false;
     $('usbIdentityResult').textContent = '케이블 연결 후 “식별 정보 읽기”를 눌러 현재 저장된 값과 사용 여부를 확인하세요.';
   }
   $('readUsbIdentity').addEventListener('click', () => exclusive('USB 식별 정보 읽기', async signal => {
@@ -490,14 +490,17 @@
     try {
       const current = await client.config(); check(signal);
       const manufacturer = await client.usbString(0); check(signal);
+      const product = await client.usbString(1); check(signal);
       const serialNumber = await client.usbString(2); check(signal);
       config = current; renderConfig();
       usbIdentity = {
         manufacturer:{ value:manufacturer, enabled:(current[36] & 0x84) === 0x84 },
+        product:{ value:product, enabled:(current[36] & 0x82) === 0x82 },
         serialNumber:{ value:serialNumber, enabled:(current[36] & 0x81) === 0x81 }
       };
-      $('usbManufacturer').value = manufacturer; $('usbSerialNumber').value = serialNumber;
+      $('usbManufacturer').value = manufacturer; $('usbProduct').value = product; $('usbSerialNumber').value = serialNumber;
       $('usbManufacturerEnabled').checked = usbIdentity.manufacturer.enabled;
+      $('usbProductEnabled').checked = usbIdentity.product.enabled;
       $('usbSerialEnabled').checked = usbIdentity.serialNumber.enabled;
       const message = '장치에 저장된 식별 정보를 읽었습니다. 체크한 항목에 사용자 지정 값을 적용합니다. 대상 PC에서 현재 표시되는 값은 재연결 후 확인하세요.';
       $('usbIdentityResult').textContent = message;
@@ -507,11 +510,12 @@
       throw error;
     }
   }, { usb:false }));
-  for (const id of ['usbManufacturerEnabled','usbSerialEnabled']) $(id).addEventListener('change', sync);
+  for (const id of ['usbManufacturerEnabled','usbProductEnabled','usbSerialEnabled']) $(id).addEventListener('change', sync);
   $('saveUsbIdentity').addEventListener('click', () => {
     if (!usbIdentity) return;
     const identity = {
       manufacturer:{ value:$('usbManufacturer').value, enabled:$('usbManufacturerEnabled').checked },
+      product:{ value:$('usbProduct').value, enabled:$('usbProductEnabled').checked },
       serialNumber:{ value:$('usbSerialNumber').value, enabled:$('usbSerialEnabled').checked }
     };
     exclusive('USB 식별 정보 저장', async signal => {
@@ -520,7 +524,7 @@
         await client.saveUsbIdentity(current, identity);
         modePending = true; config = null;
         await client.close(); info = null; renderConfig();
-        const message = '제조사명·시리얼 번호 설정의 저장 응답을 받았습니다. 양쪽 USB를 모두 뽑아 전원을 끊은 뒤 다시 연결하세요. 대상 PC에서 USB 정보를 확인하고 앱에서 “식별 정보 읽기”로 다시 확인하세요.';
+        const message = '제조사명·제품명·시리얼 번호 설정의 저장 응답을 받았습니다. 양쪽 USB를 모두 뽑아 전원을 끊은 뒤 다시 연결하세요. 대상 PC에서 USB 정보를 확인하고 앱에서 “식별 정보 읽기”로 다시 확인하세요.';
         $('usbIdentityResult').textContent = message;
         return message;
       } catch (error) {

@@ -139,3 +139,47 @@ test('a timed-out write faults the session and sends neither a duplicate nor ena
     assert.equal(port.writes.length,1); assert.equal(client.connected,false);
   } finally { await client.close(); }
 });
+
+test('all three strings use descriptor types 0/1/2 and independent enable bits', async () => {
+  const port = mock(ack), client = new SerialClient(); await client.open(port,57600,17);
+  try {
+    for (const flags of [0,2,0x80,0x82,0x85,0xff]) {
+      for (const manufacturer of [false,true]) for (const product of [false,true]) for (const serialNumber of [false,true]) {
+        const settings = {...identity(manufacturer,serialNumber),product:{enabled:product,value:'HID Desk Keyboard'}};
+        const current = currentConfig(flags), original = current.slice(), start = port.writes.length;
+        await client.saveUsbIdentity(current,settings);
+        const changed = port.writes.slice(start), types = [manufacturer ? 0 : null,product ? 1 : null,serialNumber ? 2 : null].filter(n=>n!==null);
+        assert.deepEqual(changed.slice(0,-1).map(b=>b[5]),types);
+        assert.ok(changed.slice(0,-1).every(b=>b[3]===0x0b && b[2]===17));
+        const selected = Number(manufacturer)*4+Number(product)*2+Number(serialNumber);
+        const expected = original.slice(); expected[0]=1; expected[1]=0; expected[36]=(flags&0x78)|selected|(selected?0x80:0);
+        assert.deepEqual(changed.at(-1).slice(5,-1),expected); assert.deepEqual(current,original);
+        const writtenProduct=changed.find(b=>b[3]===0x0b && b[5]===1);
+        if(product) assert.deepEqual([...writtenProduct.slice(5,-1)],[1,17,...Buffer.from('HID Desk Keyboard')]);
+      }
+    }
+  } finally { await client.close(); }
+});
+
+test('invalid product is rejected before writes and product write failures never enable partial settings', async () => {
+  const port = mock(ack), client = new SerialClient(); await client.open(port);
+  try {
+    for (const value of ['', ' ', 'x'.repeat(24), '한글', 'a\nb', 'a\0b']) {
+      await assert.rejects(client.saveUsbIdentity(currentConfig(),{...identity(),product:{enabled:true,value}}), /제품명.*1–23자/);
+    }
+    assert.equal(port.writes.length,0);
+    await client.saveUsbIdentity(currentConfig(),{...identity(false,false),product:{enabled:true,value:'P'.repeat(23)}});
+    assert.equal(port.writes[0][4],25); assert.equal(port.writes[0][5],1);
+  } finally { await client.close(); }
+  for (const failAt of [0,1,2,3]) {
+    let count=0;
+    const failing = mock((bytes,send)=>count++===failAt ? send(packet(bytes[3]|0xc0,[0xe6])) : ack(bytes,send));
+    const candidate = new SerialClient(); await candidate.open(failing);
+    try {
+      await assert.rejects(candidate.saveUsbIdentity(currentConfig(),{...identity(),product:{enabled:true,value:'Keyboard'}}), error=>
+        error instanceof ChipError && error.usbIdentityWriteAttempted && /일부 값/.test(error.message) && (failAt!==1 || /제품명/.test(error.message)));
+      assert.equal(failing.writes.length,failAt+1);
+      if(failAt<3) assert.equal(failing.writes.some(b=>b[3]===9),false);
+    } finally { await candidate.close(); }
+  }
+});
