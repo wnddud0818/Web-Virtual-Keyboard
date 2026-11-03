@@ -8,9 +8,11 @@ const {JSDOM} = require(process.env.JSDOM_MODULE || 'jsdom');
 
 (async () => {
   const assets = path.resolve(__dirname,'../app/src/main/assets/web');
-  let w, pendingRead = null, session = 0, opened = false, failOpen = false, batchRequests = 0;
+  let w, pendingRead = null, session = 0, opened = false, failOpen = false, batchRequests = 0, rejectIdentity = false, rejectRead = false;
   const queue = [], writes = [], saves = [], errors = [], results = [], batches = new Map();
   const config = new Uint8Array(50); config[0] = 0; config[5] = 0x25; config[6] = 0x80;
+  config[11] = 0x1a; config[12] = 0x86; config[13] = 0xe1; config[14] = 0x29;
+  const strings = ['Original Maker','Original Product','Original-SN'];
   const reply = (id,value,error) => setTimeout(() => w.AndroidHid.receive({id,value,error}),0);
   const flush = () => { if (pendingRead && queue.length) { const id = pendingRead; pendingRead = null; reply(id,{data:Buffer.from(queue.shift()).toString('base64')}); } };
   const dom = new JSDOM(fs.readFileSync(path.join(assets,'index.html'),'utf8'),{
@@ -31,9 +33,18 @@ const {JSDOM} = require(process.env.JSDOM_MODULE || 'jsdom');
         assert.equal(args.session,session); const bytes = Uint8Array.from(Buffer.from(args.data,'base64')); writes.push(bytes);
         const mode = config[0] & 0x7f;
         const bad = bytes[3] === 2 && mode === 3 || [4,5].includes(bytes[3]) && [1,3].includes(mode);
-        const data = bytes[3] === 1 ? [0x31,1,0,0,0,0,0,0] : bytes[3] === 8 ? config : [bad ? 0xe6 : 0];
+        let data = bytes[3] === 1 ? [0x31,1,0,0,0,0,0,0] : bytes[3] === 8 ? config : [bad ? 0xe6 : 0];
+        let command = bytes[3] | 0x80;
+        if (bytes[3] === 0x0a) {
+          const type = bytes[5]; data = [type,strings[type].length,...Buffer.from(strings[type])];
+          if (rejectRead) { command = 0xca; data = [0xe3]; }
+        }
+        if (bytes[3] === 0x0b) {
+          if (rejectIdentity && bytes[5] === 2) { command = 0xcb; data = [0xe6]; }
+          else strings[bytes[5]] = Buffer.from(bytes.slice(7,-1)).toString();
+        }
         if (bytes[3] === 9) config.set(bytes.slice(5,-1));
-        const response = w.CH9329.packet(bytes[3] | 0x80,data,bytes[2]);
+        const response = w.CH9329.packet(command,data,bytes[2]);
         queue.push(response.slice(0,3),response.slice(3)); flush(); reply(id,true); break;
       }
       case 'keyboardBatch': {
@@ -64,6 +75,7 @@ const {JSDOM} = require(process.env.JSDOM_MODULE || 'jsdom');
     while (!predicate()) { if (Date.now() > end) throw new Error('UI wait timeout: ' + $('jobDetail').textContent); await new Promise(resolve => setTimeout(resolve,5)); }
   };
   const change = (id,value) => { $(id).value = value; $(id).dispatchEvent(new w.Event('change')); };
+  const toggle = (id,value) => { $(id).checked = value; $(id).dispatchEvent(new w.Event('change')); };
   assert.equal($('connect').disabled,false); assert.equal($('transport').options.length,2); assert.ok($('transport').textContent.includes('안드로이드'));
   failOpen = true; $('connect').click(); await wait(() => !$('connect').disabled);
   assert.ok($('connectionError').textContent.includes('USB 장치를 열지')); assert.equal(writes.length,0);
@@ -137,9 +149,65 @@ const {JSDOM} = require(process.env.JSDOM_MODULE || 'jsdom');
   assert.equal(w.document.querySelector('[data-move="-1,0"]').disabled,true); results.push('mode persistence and keyboard-only capabilities');
   $('backupConfig').click(); await wait(() => saves.length > 2);
   assert.equal(JSON.parse(Buffer.from(saves.at(-1).data,'base64').toString()).config[0],1); results.push('native settings backup');
+  assert.equal($('saveUsbIdentity').disabled,true);
+  assert.equal($('usbManufacturer').disabled,true);
+  $('readUsbIdentity').click(); await wait(() => !$('saveUsbIdentity').disabled);
+  assert.equal($('usbManufacturer').value,'Original Maker');
+  assert.equal($('usbSerialNumber').value,'Original-SN');
+  assert.equal($('usbManufacturerEnabled').checked,false);
+  assert.equal($('usbManufacturer').disabled,true);
+  toggle('usbManufacturerEnabled',true); toggle('usbSerialEnabled',true);
+  assert.equal($('usbManufacturer').disabled,false);
+  writes.length = 0; $('usbManufacturer').value = 'My Keyboard'; $('usbSerialNumber').value = '한글';
+  $('saveUsbIdentity').click(); await wait(() => !$('saveUsbIdentity').disabled);
+  assert.ok($('usbIdentityResult').textContent.includes('1–23자'));
+  assert.equal(writes.some(b=>[9,0x0b].includes(b[3])),false);
+  results.push('USB identity read, default toggles and validation before persistent writes');
+  writes.length = 0; $('usbSerialNumber').value = 'KB-0001';
+  const beforeIdentity = config.slice(); $('saveUsbIdentity').click();
+  assert.equal($('readUsbIdentity').disabled,true); assert.equal($('sendText').disabled,true); assert.equal($('stop').disabled,true);
+  await wait(() => !$('connect').hidden && !$('connect').disabled);
+  assert.deepEqual(strings,['My Keyboard','Original Product','KB-0001']);
+  assert.deepEqual(writes.filter(b=>[9,0x0b].includes(b[3])).map(b=>b[3]),[0x0b,0x0b,9]);
+  const expectedIdentity = beforeIdentity.slice(); expectedIdentity[36] = 0x85;
+  assert.deepEqual(config,expectedIdentity);
+  assert.ok($('usbIdentityResult').textContent.includes('양쪽 USB'));
+  assert.equal($('saveUsbIdentity').disabled,true);
+  $('connect').click(); await wait(() => !$('sendText').disabled);
+  assert.equal($('usbManufacturer').value,'');
+  $('readUsbIdentity').click(); await wait(() => !$('saveUsbIdentity').disabled);
+  assert.equal($('usbManufacturer').value,'My Keyboard'); assert.equal($('usbSerialNumber').value,'KB-0001');
+  assert.equal($('usbManufacturerEnabled').checked,true); assert.equal($('usbSerialEnabled').checked,true);
+  const savedCount = saves.length; $('backupConfig').click(); await wait(() => saves.length > savedCount);
+  assert.deepEqual(JSON.parse(Buffer.from(saves.at(-1).data,'base64').toString()).usbIdentity,{
+    manufacturer:{value:'My Keyboard',enabled:true},serialNumber:{value:'KB-0001',enabled:true}
+  });
+  results.push('USB identity ACK order, preserved configuration, reconnect and native identity backup');
+  toggle('usbManufacturerEnabled',false); toggle('usbSerialEnabled',false); writes.length = 0;
+  $('saveUsbIdentity').click(); await wait(() => !$('connect').hidden && !$('connect').disabled);
+  assert.equal(config[36],0); assert.equal(writes.some(b=>b[3]===0x0b),false);
+  $('connect').click(); await wait(() => !$('sendText').disabled);
+  $('readUsbIdentity').click(); await wait(() => !$('saveUsbIdentity').disabled);
+  assert.equal($('usbManufacturerEnabled').checked,false);
+  results.push('USB identity default restoration disables only selected custom strings');
+  toggle('usbManufacturerEnabled',true); toggle('usbSerialEnabled',true);
+  $('usbManufacturer').value = 'Partial Maker'; $('usbSerialNumber').value = 'Partial-SN';
+  writes.length = 0; rejectIdentity = true; $('saveUsbIdentity').click();
+  await wait(() => !$('connect').hidden && !$('connect').disabled);
+  assert.ok($('usbIdentityResult').textContent.includes('일부 값'));
+  assert.equal(writes.some(b=>b[3]===9),false); assert.equal(strings[0],'Partial Maker'); assert.equal(strings[2],'KB-0001');
+  rejectIdentity = false; $('connect').click(); await wait(() => !$('sendText').disabled);
+  $('readUsbIdentity').click(); await wait(() => !$('saveUsbIdentity').disabled);
+  assert.equal($('usbManufacturer').value,'Partial Maker'); assert.equal($('usbManufacturerEnabled').checked,false);
+  results.push('partial USB identity write closes the connection, avoids retries and reloads actual stored values');
+  rejectRead = true; $('readUsbIdentity').click(); await wait(() => !$('readUsbIdentity').disabled);
+  assert.equal($('saveUsbIdentity').disabled,true); assert.ok($('usbIdentityResult').textContent.includes('읽지 못했습니다'));
+  assert.equal($('sendText').disabled,false); rejectRead = false;
+  results.push('unsupported identity query leaves normal keyboard use available and prevents stale saves');
   w.AndroidHid.disconnected('USB 분리'); await wait(() => !$('connect').hidden && !$('connect').disabled);
   assert.equal($('sendText').disabled,true); results.push('native detach disables input');
   assert.deepEqual(errors,[]);
+  fs.mkdirSync(path.resolve(__dirname,'../build'),{recursive:true});
   fs.writeFileSync(path.resolve(__dirname,'../build/dom-validation.json'),JSON.stringify({passed:results,errors,environment:'jsdom with simulated native IPC; no Android device or rendered layout'},null,2));
   console.log(JSON.stringify({passed:results.length,results},null,2)); dom.window.close();
 })().catch(error => {console.error(error);process.exit(1);});

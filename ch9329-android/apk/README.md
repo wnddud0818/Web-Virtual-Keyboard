@@ -1,5 +1,20 @@
 # Android 설치 파일
 
+- [HID-Desk-Android-1.0.4.apk](HID-Desk-Android-1.0.4.apk)
+- Android 8.0 이상 / USB OTG / 최신 Android System WebView
+- 패키지: `com.wnddud.hiddesk`, 버전 코드: `5`
+- 파일 크기: `157,101`바이트
+- SHA-256: `ffe10f3c662161ae8911476bee5facab0806b7f652c53650a96d28057221b4ff`
+- 서명 인증서 SHA-256: `afe5b931e53e95ccdf677a3f4742bfdb62fd3a4072dd1c8388ee58901e5e21fe`
+
+**장치 설정 → 제조사명 & 시리얼 번호**에서 CH9329의 USB 제조사명·시리얼 번호를 조회하고 저장할 수 있습니다. 사용자 지정 값을 켜거나 기본값으로 되돌릴 수 있으며 저장 후 양쪽 USB의 전원을 다시 연결합니다. 기존 빠른 입력·변경분 전송 기능을 포함합니다.
+
+JS 테스트 56개, 앱 화면·가상 USB 연동 20개 시나리오, Java 네이티브 검사, APK 빌드·서명·정렬 검사를 통과했습니다. 실제 갤럭시와 CH9329 장치에서의 저장·USB 인식은 미검증입니다.
+
+**새 개발 서명은 기존 1.0.3과 다릅니다. 기존 앱의 프리셋을 JSON으로 내보낸 뒤 기존 앱을 삭제하고 1.0.4를 설치하세요.** 자세한 절차와 검증 한도는 [사용 안내](../README.md)와 [검증 결과](../VALIDATION.md)를 확인하세요.
+
+# 이전 1.0.3 배포 기록
+
 - [HID-Desk-Android-1.0.3.apk](HID-Desk-Android-1.0.3.apk)
 - Android 8.0 이상 / USB OTG / 최신 Android System WebView
 - 패키지: `com.wnddud.hiddesk`, 버전 코드: `4`
