@@ -12,6 +12,7 @@
   ];
   let busy = false, aborter = null, info = null, config = null, prepared = null, selectedFile = null, selectedBase = null;
   let fileRevision = 0, toastTimer, presets = [], modePending = false, canStop = true;
+  let usbIdentity = null;
   // Android Chrome exposes navigator.serial for Bluetooth only, so wired CH340 goes through WebUSB.
   const android = /Android/i.test(navigator.userAgent);
   const native = !!window.AndroidHid?.available;
@@ -23,6 +24,7 @@
   function transport() { const chosen = $('transport').value; return chosen === 'auto' ? autoTransport() : apis[chosen] ? chosen : null; }
   const client = new SerialClient({ onFault(error) {
     info = null; config = null;
+    clearUsbIdentity();
     aborter?.abort(error); sync();
     $('connectionDetail').textContent = '통신이 중단되었습니다. 케이블 연결 방향과 속도를 확인한 뒤 다시 연결하세요.';
     notify(error.message, true);
@@ -52,6 +54,11 @@
     $('saveBaud').disabled = !available || !config;
     $('deviceBaud').disabled = busy;
     $('backupConfig').disabled = !config || busy;
+    $('saveUsbIdentity').disabled = !available || !usbIdentity;
+    for (const [toggle, field] of [['usbManufacturerEnabled','usbManufacturer'], ['usbProductEnabled','usbProduct'], ['usbSerialEnabled','usbSerialNumber']]) {
+      $(toggle).disabled = !available || !usbIdentity;
+      $(field).disabled = !available || !usbIdentity || !$(toggle).checked;
+    }
     $('sendFile').disabled = !available || !prepared || !capabilities?.keyboard;
     $('prepareFile').disabled = busy || !selectedFile || ($('fileMode').value === 'diff' && !selectedBase);
     $('fileInput').disabled = busy;
@@ -457,6 +464,7 @@
     $('saveMode').textContent = `모드 ${mode} 저장`;
   }
   function renderConfig() {
+    clearUsbIdentity();
     $('configInfo').replaceChildren();
     const fields = config && info ? [
       ['칩 버전 (원시값)', hex(info.version)], ['대상 USB 연결', info.usb ? '인식됨' : '미연결 / 인식 안 됨'],
@@ -471,6 +479,64 @@
     renderModeChoice();
   }
   $('readConfig').addEventListener('click', () => exclusive('장치 설정 읽기', async () => { info = await client.info(); config = await client.config(); renderConfig(); return '현재 장치 설정을 읽었습니다. USB 인터페이스 구성은 대상 PC에서 확인하세요.'; }, { usb:false }));
+  function clearUsbIdentity() {
+    usbIdentity = null;
+    $('usbManufacturer').value = ''; $('usbProduct').value = ''; $('usbSerialNumber').value = '';
+    $('usbManufacturerEnabled').checked = false; $('usbProductEnabled').checked = false; $('usbSerialEnabled').checked = false;
+    $('usbIdentityResult').textContent = '케이블 연결 후 “식별 정보 읽기”를 눌러 현재 저장된 값과 사용 여부를 확인하세요.';
+  }
+  $('readUsbIdentity').addEventListener('click', () => exclusive('USB 식별 정보 읽기', async signal => {
+    clearUsbIdentity(); sync();
+    try {
+      const current = await client.config(); check(signal);
+      const manufacturer = await client.usbString(0); check(signal);
+      const product = await client.usbString(1); check(signal);
+      const serialNumber = await client.usbString(2); check(signal);
+      config = current; renderConfig();
+      usbIdentity = {
+        manufacturer:{ value:manufacturer, enabled:(current[36] & 0x84) === 0x84 },
+        product:{ value:product, enabled:(current[36] & 0x82) === 0x82 },
+        serialNumber:{ value:serialNumber, enabled:(current[36] & 0x81) === 0x81 }
+      };
+      $('usbManufacturer').value = manufacturer; $('usbProduct').value = product; $('usbSerialNumber').value = serialNumber;
+      $('usbManufacturerEnabled').checked = usbIdentity.manufacturer.enabled;
+      $('usbProductEnabled').checked = usbIdentity.product.enabled;
+      $('usbSerialEnabled').checked = usbIdentity.serialNumber.enabled;
+      const message = '장치에 저장된 식별 정보를 읽었습니다. 체크한 항목에 사용자 지정 값을 적용합니다. 대상 PC에서 현재 표시되는 값은 재연결 후 확인하세요.';
+      $('usbIdentityResult').textContent = message;
+      return message;
+    } catch (error) {
+      $('usbIdentityResult').textContent = '식별 정보를 읽지 못했습니다. ' + error.message;
+      throw error;
+    }
+  }, { usb:false }));
+  for (const id of ['usbManufacturerEnabled','usbProductEnabled','usbSerialEnabled']) $(id).addEventListener('change', sync);
+  $('saveUsbIdentity').addEventListener('click', () => {
+    if (!usbIdentity) return;
+    const identity = {
+      manufacturer:{ value:$('usbManufacturer').value, enabled:$('usbManufacturerEnabled').checked },
+      product:{ value:$('usbProduct').value, enabled:$('usbProductEnabled').checked },
+      serialNumber:{ value:$('usbSerialNumber').value, enabled:$('usbSerialEnabled').checked }
+    };
+    exclusive('USB 식별 정보 저장', async signal => {
+      try {
+        const current = await client.config(); check(signal);
+        await client.saveUsbIdentity(current, identity);
+        modePending = true; config = null;
+        await client.close(); info = null; renderConfig();
+        const message = '제조사명·제품명·시리얼 번호 설정의 저장 응답을 받았습니다. 양쪽 USB를 모두 뽑아 전원을 끊은 뒤 다시 연결하세요. 대상 PC에서 USB 정보를 확인하고 앱에서 “식별 정보 읽기”로 다시 확인하세요.';
+        $('usbIdentityResult').textContent = message;
+        return message;
+      } catch (error) {
+        if (error.usbIdentityWriteAttempted) {
+          modePending = true; config = null;
+          await client.close(); info = null; renderConfig();
+        }
+        $('usbIdentityResult').textContent = error.message;
+        throw error;
+      }
+    }, { usb:false, cancellable:false });
+  });
   $('modeConfirmed').addEventListener('change', sync);
   $('operatingMode').addEventListener('change', () => {
     $('modeConfirmed').checked = false; renderModeChoice(); sync();
@@ -489,7 +555,7 @@
       return message;
     }, { usb:false, cancellable:false });
   });
-  $('backupConfig').addEventListener('click', () => { if (config) download('ch9329-config-backup.json', JSON.stringify({ version:info?.version, address:client.address, baud:client.baudRate, config:Array.from(config), savedAt:new Date().toISOString() }, null, 2)); });
+  $('backupConfig').addEventListener('click', () => { if (config) download('ch9329-config-backup.json', JSON.stringify({ version:info?.version, address:client.address, baud:client.baudRate, config:Array.from(config), usbIdentity:usbIdentity || undefined, savedAt:new Date().toISOString() }, null, 2)); });
   $('saveMode').addEventListener('click', () => {
     if (!$('modeConfirmed').checked) return;
     const mode = Number($('operatingMode').value);

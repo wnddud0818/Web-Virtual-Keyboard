@@ -66,7 +66,7 @@
       this.pending = null; clearTimeout(p.timer);
       if (frame.command === (p.command | 0xc0) || (p.status && (frame.data.length !== 1 || frame.data[0] !== 0))) {
         p.reject(new ChipError('장치가 명령을 거부했습니다 (상태 0x' + (frame.data[0] ?? 255).toString(16) + ').'));
-      } else if (!p.status && frame.data.length !== p.length) {
+      } else if (!p.status && (typeof p.length === 'function' ? !p.length(frame.data) : frame.data.length !== p.length)) {
         const error = new Error('지원하지 않는 응답 형식입니다. 장치 버전을 확인해 주세요.');
         p.reject(error); this.fault(error);
       } else p.resolve(frame.data);
@@ -89,6 +89,50 @@
       return { version: d[0], usb: d[1] === 1, capsLock: !!(d[2] & 2), numLock: !!(d[2] & 1) };
     }
     config() { return this.command(8, [], 50); }
+    usbString(type) {
+      if (![0,1,2].includes(type)) throw new Error('USB 문자열 종류를 확인해 주세요.');
+      // WCH protocol 2.2.10: type, byte length (0–23), then the string.
+      return this.command(0x0a, [type], data => data.length >= 2 && data[0] === type
+        && data[1] <= 23 && data.length === data[1] + 2)
+        .then(data => String.fromCharCode(...data.slice(2)));
+    }
+    async saveUsbIdentity(current, identity) {
+      if (!(current instanceof Uint8Array) || current.length !== 50) throw new Error('현재 설정 50바이트를 먼저 읽어 주세요.');
+      if ((current[0] & 0x7f) > 3 || (current[1] & 0x7f) !== 0) throw new Error('현재 모드 구성을 확인할 수 없습니다. 프로토콜 모드 설정이 필요합니다.');
+      const entries = [
+        { ...identity?.manufacturer, type:0, flag:4, label:'제조사명' },
+        // Omitted product keeps the effective setting for older two-field callers.
+        ...(identity?.product === undefined ? [] : [{ ...identity.product, type:1, flag:2, label:'제품명' }]),
+        { ...identity?.serialNumber, type:2, flag:1, label:'시리얼 번호' }
+      ];
+      // Validate the entire form before making any persistent write. Restrict
+      // writes to printable ASCII: this UART protocol carries single-byte text.
+      for (const entry of entries) {
+        if (typeof entry.enabled !== 'boolean') throw new Error('USB 문자열 사용 여부를 확인해 주세요.');
+        if (entry.enabled && (typeof entry.value !== 'string' || !/^[\x20-\x7e]{1,23}$/.test(entry.value) || !entry.value.trim()))
+          throw new Error(entry.label + '는 영문·숫자·ASCII 기호 1–23자로 입력해 주세요.');
+      }
+      const updated = current.slice(); updated[0] &= 0x7f; updated[1] = 0;
+      // Byte 36: bit 7 enables custom strings, bits 2/1/0 select vendor/product/SN.
+      let flags = current[36] & 0x80 ? current[36] & 7 : 0;
+      for (const entry of entries) flags = entry.enabled ? flags | entry.flag : flags & ~entry.flag;
+      updated[36] = (current[36] & 0x78) | flags | (flags ? 0x80 : 0);
+      let attempted = false, stage = '';
+      try {
+        for (const entry of entries) {
+          if (!entry.enabled) continue;
+          stage = entry.label; attempted = true;
+          await this.command(0x0b, [entry.type, entry.value.length, ...Array.from(entry.value, char => char.charCodeAt(0))]);
+        }
+        // Enable only after each requested string write has been acknowledged.
+        stage = '문자열 사용 설정'; attempted = true;
+        await this.command(9, updated);
+      } catch (error) {
+        error.usbIdentityWriteAttempted = attempted;
+        error.message = stage + ' 저장을 확인하지 못했습니다. 일부 값은 이미 저장되었을 수 있습니다. 양쪽 USB를 모두 분리한 뒤 다시 연결하고 식별 정보를 읽어 주세요. ' + error.message;
+        throw error;
+      }
+    }
     saveOperatingMode(current, mode) {
       if (!(current instanceof Uint8Array) || current.length !== 50) throw new Error('현재 설정 50바이트를 먼저 읽어 주세요.');
       if (!Number.isInteger(mode) || mode < 0 || mode > 3) throw new Error('동작 모드는 0–3 중에서 선택해 주세요.');
